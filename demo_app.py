@@ -81,37 +81,49 @@ def _zip_outputs(csv_bytes: bytes, xml_bytes: bytes, mpp_bytes: bytes | None = N
     return buf.getvalue()
 
 
-def render_gantt(updates, title: str = "Обновлённые задачи (демо-Гант)"):
+def render_gantt(
+    updates,
+    title: str = "Обновлённые задачи (демо-Гант)",
+    show_before: bool = True,
+    show_after: bool = True,
+):
+    if not show_before and not show_after:
+        st.warning("Включите хотя бы один слой: «до» или «после PPT».")
+        return
+
     rows = []
     for u in updates:
         if not u.task_id:
             continue
-        try:
-            start = datetime.strptime(u.after["Начало"], "%d.%m.%y")
-            finish = datetime.strptime(u.after["Окончание"], "%d.%m.%y")
-        except Exception:
-            continue
-        rows.append(
-            {
-                "Задача": f"{u.task_id}. {u.name[:50]}",
-                "Начало": start,
-                "Окончание": finish,
-                "Источник": "после PPT",
-            }
-        )
-        try:
-            bs = datetime.strptime(u.before["Начало"], "%d.%m.%y")
-            bf = datetime.strptime(u.before["Окончание"], "%d.%m.%y")
-            rows.append(
-                {
-                    "Задача": f"{u.task_id}. {u.name[:50]}",
-                    "Начало": bs,
-                    "Окончание": bf,
-                    "Источник": "до",
-                }
-            )
-        except Exception:
-            pass
+        label = f"{u.task_id}. {u.name[:50]}"
+        if show_after:
+            try:
+                start = datetime.strptime(u.after["Начало"], "%d.%m.%y")
+                finish = datetime.strptime(u.after["Окончание"], "%d.%m.%y")
+                rows.append(
+                    {
+                        "Задача": label,
+                        "Начало": start,
+                        "Окончание": finish,
+                        "Источник": "после PPT",
+                    }
+                )
+            except Exception:
+                pass
+        if show_before:
+            try:
+                bs = datetime.strptime(u.before["Начало"], "%d.%m.%y")
+                bf = datetime.strptime(u.before["Окончание"], "%d.%m.%y")
+                rows.append(
+                    {
+                        "Задача": label,
+                        "Начало": bs,
+                        "Окончание": bf,
+                        "Источник": "до",
+                    }
+                )
+            except Exception:
+                pass
     if not rows:
         st.info("Нет дат для Ганта")
         return
@@ -124,9 +136,15 @@ def render_gantt(updates, title: str = "Обновлённые задачи (д�
         color="Источник",
         title=title,
         color_discrete_map={"до": "#9aa0a6", "после PPT": "#1a73e8"},
+        category_orders={"Источник": ["до", "после PPT"]},
     )
     fig.update_yaxes(autorange="reversed")
-    fig.update_layout(height=max(280, 80 * len(updates)), margin=dict(l=20, r=20, t=50, b=20))
+    fig.update_layout(
+        height=max(280, 90 * max(1, len({u.task_id for u in updates if u.task_id}))),
+        margin=dict(l=20, r=20, t=50, b=20),
+        legend=dict(title="Слой", orientation="h", yanchor="bottom", y=1.02, x=0),
+        # Legend click still works, but primary control is checkboxes above
+    )
     st.plotly_chart(fig, use_container_width=True)
 
 
@@ -310,7 +328,13 @@ def main():
             st.write(u.schedule)
             st.caption(" · ".join(u.notes))
 
-    render_gantt(updates)
+    st.subheader("Отображение сроков (Гант)")
+    g1, g2 = st.columns(2)
+    with g1:
+        show_before = st.checkbox("Показать «до» (исходный график)", value=True, key="gantt_before")
+    with g2:
+        show_after = st.checkbox("Показать «после PPT»", value=True, key="gantt_after")
+    render_gantt(updates, show_before=show_before, show_after=show_after)
 
     st.markdown("---")
     st.subheader("3. Скачать изменённые файлы")
