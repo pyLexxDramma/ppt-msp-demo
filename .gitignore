@@ -1,0 +1,12 @@
+# Large / local-only
+*.mpp
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+.streamlit/secrets.toml
+sample_data/_*.csv
+sample_data/_*.xml
+_pptx_media/
+results_*/
