@@ -410,12 +410,6 @@ def main():
                     use_container_width=True,
                 )
 
-    st.markdown("---")
-    st.markdown(
-        "**На созвоне:** скачать XML или CSV → открыть в Project у Алексея → "
-        "показать каскад последователей. XML обычно лучше сохраняет структуру, чем CSV."
-    )
-
 
 if __name__ == "__main__":
     main()
