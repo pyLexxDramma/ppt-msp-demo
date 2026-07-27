@@ -6,11 +6,12 @@ import csv
 import io
 import re
 from dataclasses import asdict, dataclass, field
-from datetime import date, datetime
+from datetime import date
 from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any
 
+from .field_map import CANONICAL_FIELDS, canonicalize_header, normalize_row
 from .mode1 import compute_mode1_schedule
 from .parse_pptx import WeeklyReport
 
@@ -34,7 +35,6 @@ def _similarity(a: str, b: str) -> float:
 def _fmt_date(d: date | None) -> str:
     if not d:
         return ""
-    # MSP CSV style: dd.mm.yy
     return d.strftime("%d.%m.%y")
 
 
@@ -58,13 +58,20 @@ def _parse_period_month(period: str) -> tuple[int | None, int | None]:
     year = int(year_m.group(1)) if year_m else None
     for key, m in months.items():
         if key in p:
-            # avoid "ма" matching "март" wrongly — "ма" is short; check май separately
             if key == "ма" and "май" not in p and "мая" not in p:
                 continue
             return year, m
     if "май" in p or "мая" in p:
         return year, 5
     return year, None
+
+
+def _num_str(v: float | int | None) -> str:
+    if v is None:
+        return ""
+    if isinstance(v, float) and v.is_integer():
+        return str(int(v))
+    return str(v)
 
 
 @dataclass
@@ -84,15 +91,25 @@ class TaskUpdate:
 
 
 def load_msp_csv(path_or_bytes: str | Path | bytes, encoding: str = "cp1251") -> tuple[list[str], list[dict[str, str]]]:
+    """Load CSV and normalize headers to canonical 1:1 names."""
     if isinstance(path_or_bytes, (str, Path)):
         raw = Path(path_or_bytes).read_bytes()
     else:
         raw = path_or_bytes
     text = raw.decode(encoding, errors="replace")
     reader = csv.DictReader(io.StringIO(text), delimiter=";")
-    fieldnames = list(reader.fieldnames or [])
-    rows = [dict(r) for r in reader]
-    return fieldnames, rows
+    raw_fields = list(reader.fieldnames or [])
+    rows = [normalize_row(dict(r)) for r in reader]
+    # Preserve order: canonical first for known, then extras
+    seen: list[str] = []
+    for f in raw_fields:
+        cf = canonicalize_header(f)
+        if cf and cf not in seen:
+            seen.append(cf)
+    for f in CANONICAL_FIELDS:
+        if f not in seen:
+            seen.append(f)
+    return seen, rows
 
 
 def match_and_build_updates(
@@ -120,7 +137,6 @@ def match_and_build_updates(
             if tid in used_ids:
                 continue
             score = _similarity(rep.title, row.get("Название") or "")
-            # volume bonus
             try:
                 vor = float(str(row.get("ВОР") or "0").replace(" ", "").replace(",", "."))
             except ValueError:
@@ -163,7 +179,11 @@ def match_and_build_updates(
 
         before = {
             "ВОР": best.get("ВОР") or "",
+            "ВОР_факт": best.get("ВОР_факт") or "",
+            "ВОР_остаток": best.get("ВОР_остаток") or "",
             "Ед_изм": best.get("Ед_изм") or "",
+            "%_выполнения_ВОР": best.get("%_выполнения_ВОР") or "",
+            "Осталось_дней_прогноз": best.get("Осталось_дней_прогноз") or "",
             "Начало": best.get("Начало") or "",
             "Окончание": best.get("Окончание") or "",
             "Процент_завершения": best.get("Процент_завершения") or "",
@@ -184,14 +204,21 @@ def match_and_build_updates(
 
         after = dict(before)
         if rep.total is not None:
-            after["ВОР"] = str(int(rep.total) if float(rep.total).is_integer() else rep.total)
+            after["ВОР"] = _num_str(rep.total)
+        if rep.done is not None:
+            after["ВОР_факт"] = _num_str(rep.done)
+        if rep.rest is not None:
+            after["ВОР_остаток"] = _num_str(rep.rest)
         if rep.unit:
             after["Ед_изм"] = rep.unit
+        if rep.pct is not None:
+            after["%_выполнения_ВОР"] = f"{rep.pct:.4f}".rstrip("0").rstrip(".")
+        if sched.get("remaining_days_ceil") is not None:
+            after["Осталось_дней_прогноз"] = str(sched["remaining_days_ceil"])
         if start_d:
             after["Начало"] = _fmt_date(start_d)
         if finish_d:
             after["Окончание"] = _fmt_date(finish_d)
-        # % завершения не трогаем (формула/политика ТЗ) — пишем в Заметки
         after["Заметки"] = note
 
         notes = list(rep.notes)
@@ -221,22 +248,39 @@ def apply_updates_to_csv(
     updates: list[TaskUpdate],
     encoding: str = "cp1251",
 ) -> bytes:
+    """Write CSV with canonical headers (1:1 with MPP display names)."""
     by_id = {u.task_id: u for u in updates if u.task_id}
+
+    out_fields: list[str] = []
+    for f in CANONICAL_FIELDS:
+        if f not in out_fields:
+            out_fields.append(f)
+    for f in fieldnames:
+        cf = canonicalize_header(f)
+        if cf and cf not in out_fields:
+            out_fields.append(cf)
+
     out_rows: list[dict[str, str]] = []
     for row in rows:
+        base = {f: row.get(f, "") for f in out_fields}
         tid = str(row.get("Ид") or "")
         if tid in by_id:
-            u = by_id[tid]
-            new_row = dict(row)
-            for k, v in u.after.items():
-                if k in new_row:
-                    new_row[k] = v
-            out_rows.append(new_row)
-        else:
-            out_rows.append(row)
+            for k, v in by_id[tid].after.items():
+                ck = canonicalize_header(k)
+                if ck in base:
+                    base[ck] = v
+                elif ck not in out_fields:
+                    out_fields.append(ck)
+                    base[ck] = v
+        out_rows.append(base)
+
+    # ensure all rows have all keys
+    for r in out_rows:
+        for f in out_fields:
+            r.setdefault(f, "")
 
     buf = io.StringIO()
-    writer = csv.DictWriter(buf, fieldnames=fieldnames, delimiter=";", lineterminator="\n")
+    writer = csv.DictWriter(buf, fieldnames=out_fields, delimiter=";", lineterminator="\n", extrasaction="ignore")
     writer.writeheader()
     writer.writerows(out_rows)
     return buf.getvalue().encode(encoding, errors="replace")
@@ -269,8 +313,10 @@ def updates_to_diff_table(updates: list[TaskUpdate]) -> list[dict[str, str]]:
                 "Окончание было": u.before.get("Окончание", ""),
                 "Окончание стало": u.after.get("Окончание", ""),
                 "ВОР": f"{u.before.get('ВОР')} → {u.after.get('ВОР')}",
+                "ВОР_факт": u.after.get("ВОР_факт", ""),
+                "ВОР_остаток": u.after.get("ВОР_остаток", ""),
                 "Осталось дн": str(u.schedule.get("remaining_days_ceil") or ""),
-                "%ВОР PPT": f"{u.ppt.get('pct'):.1f}%" if u.ppt.get("pct") is not None else "",
+                "%ВОР": u.after.get("%_выполнения_ВОР", ""),
             }
         )
     return rows

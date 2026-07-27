@@ -26,6 +26,7 @@ from demo.build_update import (  # noqa: E402
     match_and_build_updates,
     updates_to_diff_table,
 )
+from demo.field_map import mapping_table_markdown  # noqa: E402
 from demo.mpp_writer import apply_updates_to_mpp, project_available  # noqa: E402
 from demo.parse_pptx import parse_stroyka_pptx  # noqa: E402
 from demo.xml_export import patch_mspdi_xml, rows_to_mspdi_xml  # noqa: E402
@@ -165,7 +166,9 @@ def main():
     )
     st.markdown(
         '<div class="yellow-note">'
-        "<b>Жёлтые колонки</b>: Начало, Окончание, ВОР, Ед.изм, Заметки. "
+        "<b>Жёлтые колонки</b> (имена 1:1 с формой MPP): "
+        "ВОР, ВОР_факт, ВОР_остаток, Ед_изм, Начало, Окончание, "
+        "%_выполнения_ВОР, Осталось_дней_прогноз, Заметки. "
         "<b>Не трогаем:</b> база, предшественники/последователи, % завершения MSP."
         "</div>",
         unsafe_allow_html=True,
@@ -338,6 +341,12 @@ def main():
 
     st.markdown("---")
     st.subheader("3. Скачать изменённые файлы")
+    with st.expander("Карта имён CSV ↔ MPP (1:1)"):
+        st.markdown(
+            "В выгрузке CSV заголовки = канонические имена формы. "
+            "В Project переименуйте Текст13/14/15/16 и Число1/2 так же — будет полное совпадение."
+        )
+        st.markdown(mapping_table_markdown())
 
     d1, d2, d3 = st.columns(3)
     with d1:
