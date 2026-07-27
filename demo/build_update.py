@@ -67,11 +67,22 @@ def _parse_period_month(period: str) -> tuple[int | None, int | None]:
 
 
 def _num_str(v: float | int | None) -> str:
+    """Целое число в выгрузке (как в оригинальном CSV/MPP)."""
     if v is None:
         return ""
-    if isinstance(v, float) and v.is_integer():
-        return str(int(v))
-    return str(v)
+    try:
+        return str(int(round(float(v))))
+    except (TypeError, ValueError):
+        return str(v)
+
+
+def _pct_int(v: float | int | None) -> str:
+    if v is None:
+        return ""
+    try:
+        return str(int(round(float(v))))
+    except (TypeError, ValueError):
+        return ""
 
 
 @dataclass
@@ -212,9 +223,9 @@ def match_and_build_updates(
         if rep.unit:
             after["Ед_изм"] = rep.unit
         if rep.pct is not None:
-            after["%_выполнения_ВОР"] = f"{rep.pct:.4f}".rstrip("0").rstrip(".")
+            after["%_выполнения_ВОР"] = _pct_int(rep.pct)
         if sched.get("remaining_days_ceil") is not None:
-            after["Осталось_дней_прогноз"] = str(sched["remaining_days_ceil"])
+            after["Осталось_дней_прогноз"] = str(int(sched["remaining_days_ceil"]))
         if start_d:
             after["Начало"] = _fmt_date(start_d)
         if finish_d:
