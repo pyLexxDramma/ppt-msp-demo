@@ -179,7 +179,7 @@ def rows_to_mspdi_xml(
         except ValueError:
             vor_f = None
         if vor_f is not None:
-            ET.SubElement(t, f"{{{NS}}}Number1").text = str(vor_f)
+            ET.SubElement(t, f"{{{NS}}}Number1").text = str(int(round(vor_f)))
         unit = (row.get("Ед_изм") or "").strip()
         if unit:
             ET.SubElement(t, f"{{{NS}}}Text1").text = unit
