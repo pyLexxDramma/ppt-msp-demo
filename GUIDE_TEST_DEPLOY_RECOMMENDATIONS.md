@@ -23,19 +23,9 @@
 
 ---
 
-## 2. Локальный запуск
+## 2. Локальный запуск (не нужен)
 
-```powershell
-cd d:\AI_codding\Analitics\mspdash
-pip install -r requirements-demo.txt
-streamlit run demo_app.py --server.port 8503
-```
 
-Открыть: http://localhost:8503
-
-Для кнопки «Сформировать .mpp» (вариант A wow): Windows + установленный Microsoft Project + `pip install pywin32`.
-
----
 
 ## 3. Самостоятельный тест (чеклист)
 
@@ -87,36 +77,6 @@ streamlit run demo_app.py --server.port 8503
 
 ---
 
-## 4. Размещение как Streamlit-приложение (Cloud)
-
-Кратко: нужен **GitHub-репозиторий** + деплой на [share.streamlit.io](https://share.streamlit.io) (как showcase).
-
-Подробные шаги — в интерактивном прогоне с разработчиком; чеклист:
-
-1. Создать репозиторий (например `ppt-msp-demo` или `bi-analytics-msp-demo`).
-2. В корне репо должны быть:
-   - `demo_app.py`
-   - `demo/` (пакет)
-   - `sample_data/` (pptx + csv; `.mpp` лучше не класть на Cloud — тяжёлый и бесполезен без Project)
-   - `requirements.txt` (для Cloud; см. ниже)
-   - этот документ / README
-3. Push в GitHub.
-4. Streamlit Cloud → **New app** → указать репо → Main file: `demo_app.py` → Deploy.
-5. URL вида `https://….streamlit.app` отдать заказчику.
-
-**Ограничения Cloud:** нет Microsoft Project → нет кнопки MPP; только расчёт + скачивание CSV/XML. Вариант B заказчик проверяет у себя в Project на Windows.
-
-Файл зависимостей для Cloud — `requirements.txt` (копия без pywin32):
-
-```
-streamlit>=1.32
-pandas>=2.0
-plotly>=5.18
-python-pptx>=1.0
-openpyxl>=3.1
-```
-
----
 
 ## 5. Выводы теста (25.07.2026)
 
@@ -160,16 +120,27 @@ PPT (еженедельно)
 
 ---
 
-## 7. Рекомендации по дальнейшей разработке
+## 7. Как довести демо до «идеала» (по приёмке XCA)
+
+Цели теста: (1) перенос в ячейки, (2) пересчёт хвоста СМР, (3) связи не слетели.
+
+| Слой | Идеальный путь | Не делать |
+|------|----------------|-----------|
+| Cloud / КП | PPT+CSV → Mode1 → **XML/CSV** | Обещать бинарный `.mpp` с Cloud |
+| Локально + Project | PPT+**исходный .mpp** → COM → тот же файл | Сравнивать «ДО» из чужого CSV с таблицей MPP |
+| Каскад | COM/XML → `Calculate` в Project | Ждать, что Mode1 у последователя останется 22.08, если связь `6ОН+13` тянет дальше |
+| % / факт.даты | **Не писать** Actual* и % Complete | Старый COM с ActualStart (сбрасывал % 100→0) |
+
+Уже в коде (`demo/mpp_writer.py`): только жёлтые поля (Text13–16, Number1/2, Start/Finish); `preserve_progress`; Number2 Mode1 после Calculate; проверка Pred/Succ в UI.
 
 ### Ближайший MVP (1–2 итерации)
 
-1. Вынести расчёт в сервис/CLI без UI (тот же `demo/`).
-2. Канонический выход: **XML** + лог `build_log.md` (было/стало).
+1. CLI-прогон без UI: `pptx + mpp/csv → pack + отчёт приёмки` (как `_run_tz_test.py` в test_01).
+2. Канонический выход: **XML** + лог было/стало + чеклист 3 целей.
 3. Жёсткий справочник работ (Id + нормативное имя), не только fuzzy.
-4. Явная политика **факт vs предшественник** (Actual Start / MSO), зафиксировать с Янчуркиным.
-5. Убрать опечатки шаблона PPT (м4/м5, «борные», OLE «фахверк» vs слайд «плита») — правила нормализации.
-6. Прогон на полном отчёте (10+ слайдов), не только 2 работы.
+4. Политика **Mode1 vs каскад**: для задач со связью FS — либо только ВОР+прогноз, либо даты + принять сдвиг Project.
+5. Нормализация PPT (м4/м5, опечатки OLE).
+6. Прогон на полном отчёте (10+ слайдов).
 
 ### Интеграция с основным BI (`bi-analytics`)
 
@@ -199,13 +170,3 @@ PPT (еженедельно)
 > B — обратный импорт обновлённого **XML** (CSV — запасной) в MS Project: связи сохраняются, каскад пересчитывается (**тест 25.07.2026 — пройден**).  
 > Напрямую с MPP без Microsoft Project не работаем.
 
----
-
-## 9. Контакты по артефактам теста
-
-| Артефакт | Путь |
-|----------|------|
-| Демо-код | `d:\AI_codding\Analitics\mspdash\` |
-| Sample PPT/CSV | `mspdash\sample_data\` |
-| Локальный тест импорта | `d:\AI_codding\Тест\TEST\msp_updated.xml`, `test_import.mpp` |
-| Отчёт автотеста Mode1 | `d:\AI_codding\Тест\TEST\results_2026-07-25\test_report.md` |

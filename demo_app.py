@@ -27,7 +27,11 @@ from demo.build_update import (  # noqa: E402
     updates_to_diff_table,
 )
 from demo.field_map import mapping_table_markdown  # noqa: E402
-from demo.mpp_writer import apply_updates_to_mpp, project_available  # noqa: E402
+from demo.mpp_writer import (  # noqa: E402
+    apply_updates_to_mpp,
+    project_available,
+    verify_mpp_links,
+)
 from demo.parse_pptx import parse_stroyka_pptx  # noqa: E402
 from demo.xml_export import patch_mspdi_xml, rows_to_mspdi_xml  # noqa: E402
 
@@ -390,16 +394,49 @@ def main():
         use_container_width=True,
     )
 
+    st.markdown("---")
+    st.subheader("4. Приёмка по целям теста (XCA)")
+    matched_ids = [u.task_id for u in updates if u.task_id]
+    st.markdown(
+        """
+| Цель | Как проверить |
+|------|----------------|
+| Перенос в ячейки | В диффе выше: ВОР / факт / остаток / осталось дн / Начало / Окончание |
+| Пересчёт хвоста СМР | Открыть MPP/XML в Project → сдвиг Id6 должен утянуть последователей (Id8, Id10…) |
+| Связи не слетели | Колонки Предшественники/Последователи до = после |
+"""
+    )
+    st.caption(
+        "Cloud отдаёт CSV/XML. Идеальный «тот же .mpp» — только локально (Windows + Project COM). "
+        "XML «Создать новый проект» ≠ правка исходного mpp на месте."
+    )
+
     if mpp_ok and st.session_state.get("mpp_bytes"):
-        st.markdown("**Вариант A — бинарный MPP**")
+        st.markdown("**Вариант A — правка исходного .mpp (COM, локально)**")
+        preserve = st.checkbox(
+            "Не трогать % завершения и факт. даты (рекомендуется)",
+            value=True,
+            key="mpp_preserve",
+            help="Иначе Project часто сбрасывает % 100→0 при записи ActualStart/Finish",
+        )
         b1, b2 = st.columns(2)
         with b1:
             if st.button("Сформировать .mpp через Project COM", use_container_width=True):
                 try:
-                    with st.spinner("MS Project…"):
-                        mpp_out = apply_updates_to_mpp(st.session_state["mpp_bytes"], updates)
-                    st.session_state["mpp_out"] = mpp_out
-                    st.success("MPP готов")
+                    with st.spinner("MS Project: жёлтые поля → Calculate → прогноз Mode1…"):
+                        src = st.session_state["mpp_bytes"]
+                        mpp_out = apply_updates_to_mpp(
+                            src,
+                            updates,
+                            preserve_progress=preserve,
+                            write_dates=True,
+                            recalculate=True,
+                        )
+                        st.session_state["mpp_out"] = mpp_out
+                        st.session_state["mpp_link_check"] = verify_mpp_links(
+                            src, mpp_out, matched_ids
+                        )
+                    st.success("MPP готов (связи проверены ниже)")
                 except Exception as e:
                     st.error(f"Ошибка MPP: {e}")
         with b2:
@@ -418,6 +455,13 @@ def main():
                     mime="application/zip",
                     use_container_width=True,
                 )
+        if st.session_state.get("mpp_link_check"):
+            st.markdown("**Проверка связей после COM**")
+            st.dataframe(
+                pd.DataFrame(st.session_state["mpp_link_check"]),
+                use_container_width=True,
+                hide_index=True,
+            )
 
 
 if __name__ == "__main__":
