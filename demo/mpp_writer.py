@@ -1,10 +1,11 @@
-"""Optional: write yellow fields into .mpp via MS Project COM (Windows + Project only).
+"""Optional: write schedule/VOR fields into .mpp via MS Project COM (Windows + Project only).
 
-Правила «идеальной» записи (по результатам теста XCA):
-- Пишем только жёлтые поля: ВОР/факт/остаток/ед., %ВОР, осталось дней (прогноз), Начало/Окончание.
-- НЕ трогаем % завершения MSP и факт. начало/окончание (иначе Project сбрасывает % 100→0).
+Правила записи (тест XCA):
+- Пишем: ВОР/факт/остаток/ед., %ВОР, осталось дней (прогноз), Начало/Окончание.
+- НЕ пишем базовые поля формы (у заказчика они «жёлтые»: Базовое начало/окончание).
+- НЕ трогаем ActualStart/ActualFinish по умолчанию (иначе Project сбрасывает % 100→0).
 - Связи не меняем; после CalculateProject перепроверяем Pred/Succ.
-- Number2 (прогноз Mode1) пишем повторно после Calculate — каскад не должен затирать кастомное поле.
+- Number2 (прогноз Mode1) пишем повторно после Calculate.
 """
 
 from __future__ import annotations
@@ -159,7 +160,7 @@ def apply_updates_to_mpp(
     write_dates: bool = True,
     recalculate: bool = True,
 ) -> bytes:
-    """Применить жёлтые поля к копии MPP. Связи не трогаем.
+    """Применить ВОР/сроки/прогноз к копии MPP. Базу и связи не трогаем.
 
     preserve_progress=True (по умолчанию): не писать ActualStart/ActualFinish/% Complete.
     """
