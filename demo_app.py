@@ -1,531 +1,400 @@
 """
-Streamlit demo: загрузка PPT + CSV/XML → расчёт → просмотр графика в браузере → скачивание CSV/XML (+MPP).
+Streamlit demo: форма ввода объёмов → Mode1 → обновление sample .mpp (COM на Windows).
 
   streamlit run demo_app.py --server.port 8503
 """
 
 from __future__ import annotations
 
-import io
 import sys
-import zipfile
-from datetime import date
 from pathlib import Path
 
-import pandas as pd
 import streamlit as st
 
 ROOT = Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from demo.build_update import (  # noqa: E402
-    apply_updates_to_csv,
-    load_msp_csv,
-    match_and_build_updates,
-    updates_to_diff_table,
+from demo.form_input import (  # noqa: E402
+    MONTHS_RU,
+    WEEKS_COUNT,
+    FormState,
+    WeekRow,
+    compute_aggregates,
+    form_ready_for_recalc,
+    period_label,
 )
-from demo.field_map import mapping_table_markdown  # noqa: E402
-from demo.mpp_writer import (  # noqa: E402
-    apply_updates_to_mpp,
-    project_available,
-    verify_mpp_links,
+from demo.form_pipeline import (  # noqa: E402
+    SAMPLE_MPP,
+    silent_prefill_from_csv,
+    run_form_pipeline,
 )
-from demo.parse_pptx import parse_stroyka_pptx  # noqa: E402
-from demo.schedule_view import (  # noqa: E402
-    apply_updates_to_schedule_df,
-    csv_rows_to_schedule_df,
-    parse_mspdi_xml_to_df,
-    render_compare_gantt,
-    render_schedule_gantt,
-    render_schedule_table,
-)
-from demo.xml_export import patch_mspdi_xml, rows_to_mspdi_xml  # noqa: E402
+from demo.mpp_writer import project_available  # noqa: E402
 
-SAMPLE = ROOT / "sample_data"
-PAGE_TITLE = "PPT → MSP — демо для XCA"
+PAGE_TITLE = "Данные по объему стройплощадок"
 
-st.set_page_config(page_title=PAGE_TITLE, page_icon="📊", layout="wide")
+st.set_page_config(page_title=PAGE_TITLE, page_icon="Λ", layout="wide")
 
 st.markdown(
     """
 <style>
-  .block-container { padding-top: 1.2rem; max-width: 1200px; }
-  div[data-testid="stMetricValue"] { font-size: 1.35rem; }
-  .yellow-note {
-    background: #fff8db; border-left: 4px solid #e6b800;
-    padding: 0.75rem 1rem; border-radius: 4px; margin-bottom: 1rem;
+  :root {
+    --navy: #0A1A2F;
+    --blue: #00529B;
+    --blue-deep: #003D75;
+    --blue-soft-bg: #E3EDF7;
+    --green: #10B981;
+    --red: #EF5350;
+    --ink: #101828;
+    --ink-soft: #5B6473;
+    --ink-faint: #8A93A3;
+    --surface: #FFFFFF;
+    --surface-soft: #F9FBFD;
+    --page-bg: #EEF2F5;
+    --line: #E4E7EB;
+    --zone-blue-bg: #EAF1F8;
+    --zone-blue-border: #B9D6F1;
+    --zone-amber-bg: #FFF4E5;
+    --zone-amber-border: #F3D9AC;
+    --zone-green-bg: #EAF7F0;
+    --zone-green-border: #B7E1C7;
   }
-  .flow-note {
-    background: #e8f0fe; border-left: 4px solid #1a73e8;
-    padding: 0.75rem 1rem; border-radius: 4px; margin-bottom: 1rem;
+  .block-container { padding-top: 1rem; max-width: 1080px; }
+  .brand-row { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:8px; }
+  .brand-mark {
+    width:34px; height:34px; border-radius:9px; background:var(--blue); color:#fff;
+    display:inline-flex; align-items:center; justify-content:center; font-weight:800; margin-right:8px;
   }
+  .brand-word { font-weight:800; font-size:16px; color:var(--navy); }
+  .pill {
+    display:inline-flex; background:var(--blue-soft-bg); color:var(--blue);
+    font-weight:600; font-size:11.5px; padding:7px 14px; border-radius:999px;
+  }
+  .hero-title { font-size:26px; font-weight:800; color:var(--navy); margin:0 0 4px; }
+  .hero-sub { font-size:12.5px; color:var(--ink-faint); margin:0 0 8px; }
+  .hero-underline { width:40px; height:3px; background:var(--blue); border-radius:2px; margin-bottom:16px; }
+  .card {
+    background:var(--surface); border:1px solid var(--line); border-radius:14px;
+    padding:16px 18px; margin-bottom:14px;
+  }
+  .card-title { font-size:14.5px; font-weight:700; color:var(--navy); margin:0 0 2px; }
+  .card-sub { font-size:11.5px; color:var(--ink-faint); margin:0 0 12px; }
+  .zone {
+    border-radius:9px; padding:12px 14px; margin-bottom:10px; border:1px solid;
+  }
+  .zone-blue { background:var(--zone-blue-bg); border-color:var(--zone-blue-border); }
+  .zone-green { background:var(--zone-green-bg); border-color:var(--zone-green-border); }
+  .zone-amber { background:var(--zone-amber-bg); border-color:var(--zone-amber-border); }
+  .zone-head { font-size:13px; font-weight:700; color:var(--navy); margin-bottom:8px; }
+  .zone-note { font-size:11px; color:var(--ink-faint); margin-top:6px; }
+  .result-card {
+    background:var(--surface); border:1px solid var(--line); border-radius:14px;
+    padding:14px 18px; margin-top:12px;
+  }
+  .result-head { font-size:14px; font-weight:700; color:var(--navy); margin-bottom:10px; }
+  .result-line { display:flex; justify-content:space-between; gap:12px; font-size:13px; margin:6px 0; }
+  .result-k { color:var(--ink-soft); }
+  .result-v { font-weight:700; color:var(--navy); font-family:ui-monospace,monospace; }
+  .badge { display:inline-block; font-size:11px; font-weight:700; padding:3px 9px; border-radius:999px; }
+  .badge-progress { background:var(--zone-amber-bg); color:#9A6B0C; }
+  .badge-done { background:var(--zone-green-bg); color:#1D8A5E; }
+  .badge-over { background:#FDECEC; color:var(--red); }
+  .footnote { font-size:11px; color:var(--ink-faint); margin-top:14px; }
+  div[data-testid="stMetricValue"] { font-size:1.2rem; }
 </style>
 """,
     unsafe_allow_html=True,
 )
 
 
-def _load_sample_pptx() -> tuple[bytes, str]:
-    p = SAMPLE / "stroyka_demo.pptx"
-    return p.read_bytes(), p.name
-
-
-def _load_sample_csv() -> tuple[bytes, str]:
-    p = SAMPLE / "msp_demo.csv"
-    return p.read_bytes(), p.name
-
-
-def _load_sample_mpp() -> tuple[bytes, str] | tuple[None, None]:
-    p = SAMPLE / "msp_demo.mpp"
-    if p.exists():
-        return p.read_bytes(), p.name
-    return None, None
-
-
-def _zip_outputs(csv_bytes: bytes, xml_bytes: bytes, mpp_bytes: bytes | None = None) -> bytes:
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        zf.writestr("msp_updated.csv", csv_bytes)
-        zf.writestr("msp_updated.xml", xml_bytes)
-        if mpp_bytes:
-            zf.writestr("msp_updated.mpp", mpp_bytes)
-    return buf.getvalue()
-
-
-def _render_xml_browser_viewer(xml_bytes: bytes, label: str = "XML") -> None:
-    try:
-        df = parse_mspdi_xml_to_df(xml_bytes)
-    except ValueError as e:
-        st.error(str(e))
+def _init_state() -> None:
+    if "form_inited" in st.session_state:
         return
-    c1, c2, c3 = st.columns(3)
-    c1.metric(f"Задач в {label}", len(df))
-    with_dates = int(df["_start"].notna().sum()) if "_start" in df.columns else 0
-    c2.metric("С датами", with_dates)
-    c3.metric("Со связями", int((df["Предшественники"].astype(str).str.len() > 0).sum()) if "Предшественники" in df.columns else 0)
+    pref = silent_prefill_from_csv(FormState())
+    st.session_state["form_inited"] = True
+    st.session_state["f_project"] = pref.project
+    st.session_state["f_project_id"] = pref.project_id
+    st.session_state["f_month"] = pref.period_month
+    st.session_state["f_year"] = pref.period_year
+    st.session_state["f_task_name"] = pref.task_name
+    st.session_state["f_task_id"] = pref.task_id
+    st.session_state["f_vor"] = float(pref.vor)
+    st.session_state["f_unit"] = pref.unit
+    st.session_state["f_prev_cum"] = float(pref.prev_cumulative)
+    for i, w in enumerate(pref.weeks):
+        st.session_state[f"plan_{i}"] = float(w.plan) if w.plan is not None else 0.0
+        # Streamlit number_input не любит None — пустой факт = 0 с флагом «не задан» через checkbox сложно;
+        # используем sentinel: храним факт как float, отдельный флаг «есть факт»
+        has = w.fact is not None
+        st.session_state[f"fact_has_{i}"] = has
+        st.session_state[f"fact_{i}"] = float(w.fact) if has else 0.0
 
-    q = st.text_input("Фильтр по названию / Id", key=f"xml_filter_{label}", placeholder="например: фундамент или 6")
-    view = df
-    if q.strip():
-        qq = q.strip().lower()
-        view = df[
-            df["Ид"].astype(str).str.contains(qq, case=False, na=False)
-            | df["Название"].astype(str).str.lower().str.contains(qq, na=False)
-        ]
-    max_bars = st.slider("Макс. полос на Ганте", 10, 80, 40, key=f"xml_bars_{label}")
-    render_schedule_gantt(view, title=f"Гант из {label} (упрощённо в браузере)", max_bars=max_bars)
-    render_schedule_table(view, title=f"Таблица из {label}")
+
+def _read_form() -> FormState:
+    weeks: list[WeekRow] = []
+    for i in range(WEEKS_COUNT):
+        plan = float(st.session_state.get(f"plan_{i}", 0) or 0)
+        has = bool(st.session_state.get(f"fact_has_{i}", False))
+        fact = float(st.session_state.get(f"fact_{i}", 0) or 0) if has else None
+        weeks.append(WeekRow(plan=plan, fact=fact))
+    return FormState(
+        project=str(st.session_state.get("f_project") or ""),
+        project_id=str(st.session_state.get("f_project_id") or ""),
+        period_month=int(st.session_state.get("f_month", 6)),
+        period_year=int(st.session_state.get("f_year", 2026)),
+        mode="last",
+        task_name=str(st.session_state.get("f_task_name") or ""),
+        task_id=str(st.session_state.get("f_task_id") or ""),
+        vor=float(st.session_state.get("f_vor") or 0),
+        unit=str(st.session_state.get("f_unit") or ""),
+        prev_cumulative=float(st.session_state.get("f_prev_cum") or 0),
+        weeks=weeks,
+    )
 
 
-def main():
-    st.title("Автоматизация графика СМР: PPT → MS Project")
+def _fmt(n: float | None, digits: int = 0) -> str:
+    if n is None:
+        return "—"
+    return f"{n:,.{digits}f}".replace(",", " ").replace(".", ",")
+
+
+def _status_badge(status: str) -> str:
+    if status == "over":
+        return '<span class="badge badge-over">Превышение ВОР</span>'
+    if status == "done":
+        return '<span class="badge badge-done">Завершено</span>'
+    return '<span class="badge badge-progress">В работе</span>'
+
+
+def main() -> None:
+    _init_state()
+
+    st.markdown(
+        '<div class="brand-row">'
+        '<div><span class="brand-mark">Λ</span><span class="brand-word">CONALL</span></div>'
+        '<span class="pill">AI.CONALL.RU · ВВОД ДАННЫХ</span>'
+        "</div>",
+        unsafe_allow_html=True,
+    )
+    st.markdown(f'<p class="hero-title">{PAGE_TITLE}</p>', unsafe_allow_html=True)
+    st.markdown(
+        '<p class="hero-sub">Роль: Инженер · ввод плана/факта по неделям для актуализации MS Project</p>'
+        '<div class="hero-underline"></div>',
+        unsafe_allow_html=True,
+    )
+
+    # ---- settings ----
+    st.markdown(
+        '<div class="card"><p class="card-title">Параметры отчёта</p>'
+        '<p class="card-sub">Данные по выбранному периоду вносятся вручную</p></div>',
+        unsafe_allow_html=True,
+    )
+    c1, c2, c3, c4 = st.columns([2, 2, 1.2, 1])
+    with c1:
+        st.text_input("Объект / ЖК", key="f_project")
+    with c2:
+        st.text_input("ID проекта", key="f_project_id")
+    with c3:
+        st.selectbox("Месяц отчёта", options=list(range(12)), format_func=lambda i: MONTHS_RU[i], key="f_month")
+    with c4:
+        st.number_input("Год", min_value=2020, max_value=2100, step=1, key="f_year")
+    st.selectbox(
+        "Режим расчёта прогноза",
+        options=["last"],
+        format_func=lambda _: "По факту последней недели",
+        disabled=True,
+        key="f_mode_display",
+    )
+
+    # ---- task ----
+    st.markdown(
+        '<div class="card"><p class="card-title">Задача</p>'
+        '<p class="card-sub">В боевой версии придёт из MSP; в демо редактируется</p></div>',
+        unsafe_allow_html=True,
+    )
+    t1, t2, t3, t4 = st.columns(4)
+    with t1:
+        st.text_input("Наименование работ", key="f_task_name")
+    with t2:
+        st.text_input("Ид задачи (MSP)", key="f_task_id")
+    with t3:
+        st.number_input("ВОР", min_value=0.0, step=1.0, key="f_vor")
+    with t4:
+        st.text_input("Ед. измерения", key="f_unit")
+
+    form = _read_form()
+    agg = compute_aggregates(form)
+
+    # ---- weeks ----
+    st.markdown(
+        f'<div class="card"><p class="card-title">Ввод по неделям</p>'
+        f'<p class="card-sub">Период: {period_label(form)} · отклонение и накопительно считаются автоматически</p></div>',
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        f'<div class="zone zone-blue"><div class="zone-head">План · итог {_fmt(agg.plan_total)}</div></div>',
+        unsafe_allow_html=True,
+    )
+    plan_cols = st.columns(WEEKS_COUNT)
+    for i, col in enumerate(plan_cols):
+        with col:
+            st.number_input(f"{i + 1} нед.", min_value=0.0, step=1.0, key=f"plan_{i}")
+
+    st.markdown(
+        f'<div class="zone zone-green"><div class="zone-head">Факт · итог {_fmt(agg.fact_total)}</div></div>',
+        unsafe_allow_html=True,
+    )
+    fact_cols = st.columns(WEEKS_COUNT)
+    for i, col in enumerate(fact_cols):
+        with col:
+            st.checkbox(f"Есть факт {i + 1}", key=f"fact_has_{i}")
+            st.number_input(
+                f"Факт {i + 1}",
+                min_value=0.0,
+                step=1.0,
+                key=f"fact_{i}",
+                disabled=not st.session_state.get(f"fact_has_{i}", False),
+            )
+
+    # re-read after widgets (values already in session_state for next compute below)
+    form = _read_form()
+    agg = compute_aggregates(form)
+
+    st.markdown(
+        f'<div class="zone zone-amber"><div class="zone-head">'
+        f"Отклонение и накопительно · {_fmt(agg.month_cum)}</div></div>",
+        unsafe_allow_html=True,
+    )
+    st.caption("Отклонение = факт − план. Недели без факта в накопительный расчёт не попадают.")
+    dcols = st.columns(WEEKS_COUNT)
+    for i, col in enumerate(dcols):
+        row = agg.rows[i] if i < len(agg.rows) else None
+        with col:
+            st.metric(f"Откл. {i + 1}", _fmt(row.dev if row else None))
+    ccols = st.columns(WEEKS_COUNT)
+    for i, col in enumerate(ccols):
+        row = agg.rows[i] if i < len(agg.rows) else None
+        with col:
+            st.metric(f"Накоп. {i + 1}", _fmt(row.cum if row else None))
+
+    # ---- cumulative ----
+    st.markdown(
+        '<div class="card"><p class="card-title">Факт накопленный с начала</p>'
+        '<p class="card-sub">п. 4.1.1 ТЗ</p></div>',
+        unsafe_allow_html=True,
+    )
+    s1, s2, s3 = st.columns(3)
+    with s1:
+        st.number_input("Накоплено до периода", min_value=0.0, step=1.0, key="f_prev_cum")
+    form = _read_form()
+    agg = compute_aggregates(form)
+    with s2:
+        st.metric("Факт накопленный с начала", f"{_fmt(agg.done)} {form.unit}")
+    with s3:
+        st.metric("Остаток до ВОР", f"{_fmt(agg.remaining)} {form.unit}")
+
+    ready = form_ready_for_recalc(form)
+    com_ok = project_available()
     st.caption(
-        "Расчёт сроков по PPT + просмотр графика в браузере (CSV/XML). "
-        "Полный MS Project здесь не эмулируется — для него скачайте XML."
+        "Windows + MS Project + pywin32 — для скачивания .mpp. "
+        f"COM сейчас: {'доступен' if com_ok else 'недоступен (на Mac ожидаемо)'}."
     )
 
-    st.markdown(
-        '<div class="flow-note">'
-        "<b>Поток:</b> 1) PPT + CSV (XML опционально) → 2) «Рассчитать» → "
-        "3) смотрите таблицу/Гант/дифф в браузере → "
-        "4) скачайте <code>msp_updated.xml</code> → File → Open в MS Project."
-        "</div>",
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        '<div class="yellow-note">'
-        "<b>Жёлтые колонки</b> (обновляем): "
-        "ВОР, ВОР_факт, ВОР_остаток, Ед_изм, Начало, Окончание, "
-        "%_выполнения_ВОР, Осталось_дней_прогноз, Заметки. "
-        "<b>Не трогаем:</b> база, предшественники/последователи, % завершения MSP. "
-        "<b>На Cloud нет .mpp</b> — только CSV/XML."
-        "</div>",
-        unsafe_allow_html=True,
-    )
+    if st.button("Сохранить и пересчитать", type="primary", use_container_width=True, disabled=not ready):
+        with st.spinner("Режим №1 и обновление графика…"):
+            pipe = run_form_pipeline(form)
+        st.session_state["pipe_result"] = pipe
 
-    with st.sidebar:
-        st.header("Параметры")
-        today = st.date_input("Дата «сегодня» (Режим №1)", value=date(2026, 7, 25))
-        source = st.radio(
-            "Источник данных",
-            ["Загрузить свои файлы", "Демо-файлы Ленинский"],
-            index=0,
-        )
-        st.markdown("---")
+    if not ready:
+        st.info("Заполните ВОР > 0 и хотя бы одну неделю с фактом > 0 — кнопка станет активной.")
+
+    pipe = st.session_state.get("pipe_result")
+    if pipe is not None:
+        m1 = pipe.schedule.get("mode1") or {}
+        start = pipe.schedule.get("start") or "—"
+        finish = pipe.schedule.get("finish") or "—"
+        fw = m1.get("forecast_weeks")
+        rem = pipe.schedule.get("remaining_days_ceil")
+        st.markdown('<div class="result-card"><div class="result-head">Результат пересчёта (Mode1)</div>', unsafe_allow_html=True)
         st.markdown(
-            "**В браузере:** таблица + Гант по CSV/XML.\n\n"
-            "**В Project:** скачайте XML → Файл → Открыть.\n\n"
-            "**MPP** — только Windows + Project + `pywin32` (не Cloud)."
+            f'<div class="result-line"><span class="result-k">Статус</span>'
+            f'<span class="result-v">{_status_badge(pipe.status)}</span></div>',
+            unsafe_allow_html=True,
         )
-        mpp_ok = project_available()
-        st.write("MS Project COM:", "✅ доступен" if mpp_ok else "❌ нет")
+        st.markdown(
+            f'<div class="result-line"><span class="result-k">Факт накопленный / ВОР</span>'
+            f'<span class="result-v">{_fmt(pipe.aggregates.done)} / {_fmt(pipe.aggregates.vor)} {form.unit}</span></div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            f'<div class="result-line"><span class="result-k">Остаток</span>'
+            f'<span class="result-v">{_fmt(pipe.aggregates.remaining)} {form.unit}</span></div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            f'<div class="result-line"><span class="result-k">Неделя / факт периода</span>'
+            f'<span class="result-v">нед. {m1.get("last_week") or "—"} · {_fmt(m1.get("fact_period"), 1)}</span></div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            f'<div class="result-line"><span class="result-k">Прогноз</span>'
+            f'<span class="result-v">'
+            f'{("≈ " + _fmt(fw, 1) + " нед.") if fw is not None else "не определён"} · '
+            f'дней ceil={rem if rem is not None else "—"}</span></div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            f'<div class="result-line"><span class="result-k">Начало / Окончание</span>'
+            f'<span class="result-v">{start} → {finish}</span></div>',
+            unsafe_allow_html=True,
+        )
+        st.caption(f"today={pipe.today} · {pipe.schedule.get('start_rule') or ''} · {pipe.schedule.get('finish_rule') or ''}")
+        st.markdown("</div>", unsafe_allow_html=True)
 
-    use_sample = source.startswith("Демо")
-
-    tab_calc, tab_view = st.tabs(
-        ["1. PPT → расчёт → скачать", "2. Просмотр CSV / XML в браузере"]
-    )
-
-    with tab_calc:
-        st.subheader("Загрузка входных файлов")
-        c1, c2, c3 = st.columns(3)
-
-        pptx_bytes = pptx_name = None
-        csv_bytes = csv_name = None
-        xml_bytes_in = xml_name = None
-        mpp_bytes = mpp_name = None
-
-        with c1:
-            st.markdown("**PPT-отчёт (обязательно)**")
-            if use_sample:
-                pptx_bytes, pptx_name = _load_sample_pptx()
-                st.success(f"sample: `{pptx_name}`")
-            else:
-                up = st.file_uploader("Файл .pptx", type=["pptx"], key="up_pptx")
-                if up:
-                    pptx_bytes, pptx_name = up.getvalue(), up.name
-
-        with c2:
-            st.markdown("**График CSV**")
-            if use_sample:
-                csv_bytes, csv_name = _load_sample_csv()
-                st.success(f"sample: `{csv_name}`")
-            else:
-                up_csv = st.file_uploader(
-                    "Экспорт из Project (.csv, cp1251, `;`)",
-                    type=["csv"],
-                    key="up_csv",
-                )
-                if up_csv:
-                    csv_bytes, csv_name = up_csv.getvalue(), up_csv.name
-
-        with c3:
-            st.markdown("**График XML (опционально)**")
-            if use_sample:
-                st.caption("XML соберём из CSV после расчёта")
-            else:
-                up_xml = st.file_uploader(
-                    "Экспорт Project XML (.xml) — патч дат по ID + превью",
-                    type=["xml"],
-                    key="up_xml",
-                )
-                if up_xml:
-                    xml_bytes_in, xml_name = up_xml.getvalue(), up_xml.name
-
-        if mpp_ok:
-            with st.expander("Дополнительно: исходный .mpp (вариант A, только локально)"):
-                if use_sample:
-                    mpp_bytes, mpp_name = _load_sample_mpp()
-                    if mpp_bytes:
-                        st.caption(f"sample: `{mpp_name}`")
-                else:
-                    up_mpp = st.file_uploader("Файл .mpp", type=["mpp"], key="up_mpp")
-                    if up_mpp:
-                        mpp_bytes, mpp_name = up_mpp.getvalue(), up_mpp.name
-
-        ready = bool(pptx_bytes) and bool(csv_bytes)
-        if not ready:
-            st.warning("Нужны как минимум **PPTX** и **CSV** графика. XML — опционально.")
-        else:
-            if st.button("Рассчитать и подготовить файлы", type="primary", use_container_width=True):
-                with st.spinner("Парсинг PPT → сопоставление с графиком → CSV/XML…"):
-                    reports = parse_stroyka_pptx(pptx_bytes, filename=pptx_name or "upload.pptx")
-                    fieldnames, rows = load_msp_csv(csv_bytes)
-                    updates = match_and_build_updates(reports, rows, today=today)
-                    csv_out = apply_updates_to_csv(fieldnames, rows, updates)
-                    xml_out = rows_to_mspdi_xml(rows, updates, project_name="msp_updated")
-                    xml_patched = None
-                    if xml_bytes_in:
-                        xml_patched = patch_mspdi_xml(xml_bytes_in, updates)
-
-                    st.session_state["reports"] = reports
-                    st.session_state["updates"] = updates
-                    st.session_state["csv_out"] = csv_out
-                    st.session_state["xml_out"] = xml_out
-                    st.session_state["xml_patched"] = xml_patched
-                    st.session_state["xml_name_in"] = xml_name
-                    st.session_state["rows"] = rows
-                    st.session_state["fieldnames"] = fieldnames
-                    st.session_state["mpp_bytes"] = mpp_bytes
-                    st.session_state["mpp_out"] = None
-                    st.session_state["pptx_name"] = pptx_name
-                    st.session_state["csv_name"] = csv_name
-
-        if xml_bytes_in and "updates" not in st.session_state:
-            with st.expander("Превью загруженного XML (до расчёта)", expanded=False):
-                _render_xml_browser_viewer(xml_bytes_in, label="входной XML")
-
-        if "updates" not in st.session_state:
-            st.info("Загрузите PPTX+CSV и нажмите «Рассчитать», либо откройте вкладку просмотра CSV/XML.")
-        else:
-            reports = st.session_state["reports"]
-            updates = st.session_state["updates"]
-            csv_out = st.session_state["csv_out"]
-            xml_out = st.session_state["xml_out"]
-            xml_patched = st.session_state.get("xml_patched")
-            rows = st.session_state.get("rows") or []
-
-            st.markdown("---")
-            st.subheader("Результат расчёта")
-
-            ppt_rows = []
-            for r in reports:
-                ppt_rows.append(
-                    {
-                        "Слайд": r.slide_index,
-                        "Работа": r.title[:70],
-                        "Всего": r.total,
-                        "Выполнено": r.done,
-                        "Остаток": r.rest,
-                        "Ед.": r.unit,
-                        "%": f"{r.pct:.1f}%" if r.pct is not None else "",
-                        "Факт по неделям": r.weeks_fact,
-                    }
-                )
-            st.markdown("**Из PPT**")
-            st.dataframe(pd.DataFrame(ppt_rows), use_container_width=True, hide_index=True)
-
-            matched = [u for u in updates if u.task_id]
-            m1, m2, m3 = st.columns(3)
-            m1.metric("Работ в PPT", len(reports))
-            m2.metric("Сопоставлено с MSP", len(matched))
-            m3.metric(
-                "Прогноз дн (Mode1)",
-                sum(int(u.schedule.get("remaining_days_ceil") or 0) for u in matched),
-            )
-
-            st.markdown("**Дифф обновляемых полей**")
-            st.dataframe(
-                pd.DataFrame(updates_to_diff_table(updates)),
+        if pipe.mpp_error:
+            st.warning(pipe.mpp_error)
+        if pipe.mpp_bytes:
+            st.download_button(
+                "Скачать обновлённый .mpp",
+                data=pipe.mpp_bytes,
+                file_name="msp_updated.mpp",
+                mime="application/vnd.ms-project",
+                type="primary",
                 use_container_width=True,
-                hide_index=True,
+                help="Откройте файл в MS Project",
             )
-
-            with st.expander("Детали Mode1"):
-                for u in updates:
-                    if not u.task_id:
-                        st.warning(f"Не сопоставлено: {u.ppt_title}")
-                        continue
-                    st.markdown(f"**Id {u.task_id}** — {u.name}")
-                    st.write(u.schedule)
-                    st.caption(" · ".join(u.notes))
-
-            st.subheader("Сравнение сроков (Гант до / после)")
-            g1, g2 = st.columns(2)
-            with g1:
-                show_before = st.checkbox("Показать «до»", value=True, key="gantt_before")
-            with g2:
-                show_after = st.checkbox("Показать «после PPT»", value=True, key="gantt_after")
-            render_compare_gantt(updates, show_before=show_before, show_after=show_after)
-
-            st.subheader("График целиком в браузере (после обновления)")
-            base_df = csv_rows_to_schedule_df(rows)
-            after_df = apply_updates_to_schedule_df(base_df, updates)
-            changed_ids = {str(u.task_id) for u in matched}
-            only_chg = st.checkbox("Только изменённые задачи", value=False, key="only_changed")
-            show_df = after_df
-            if only_chg and changed_ids:
-                show_df = after_df[after_df["Ид"].astype(str).isin(changed_ids)]
-            max_bars = st.slider("Макс. полос на Ганте графика", 10, 80, 35, key="full_gantt_bars")
-            render_schedule_gantt(
-                show_df,
-                title="Обновлённый график (CSV → веб)",
-                max_bars=max_bars,
-                highlight_ids=changed_ids,
-            )
-            render_schedule_table(show_df, title="Таблица обновлённого графика")
-
-            st.markdown("**Превью выходного XML** (то, что откроете в Project)")
-            with st.expander("Гант / таблица из msp_updated.xml", expanded=False):
-                _render_xml_browser_viewer(xml_out, label="msp_updated.xml")
-
-            st.markdown("---")
-            st.subheader("Скачать файлы для MS Project")
-            st.success(
-                "Рекомендуется: **msp_updated.xml** → в MS Project: Файл → Открыть → "
-                "«Создать новый проект»."
-            )
-            with st.expander("Карта имён CSV ↔ MPP (1:1)"):
-                st.markdown(
-                    "В выгрузке CSV заголовки = канонические имена формы. "
-                    "В Project переименуйте Текст13/14/15/16 и Число1/2 так же."
-                )
-                st.markdown(mapping_table_markdown())
-
-            d1, d2, d3 = st.columns(3)
-            with d1:
+            st.success("Скачайте обновлённый .mpp и откройте в MS Project.")
+        d1, d2 = st.columns(2)
+        with d1:
+            if pipe.csv_bytes:
                 st.download_button(
-                    "⬇️ msp_updated.csv",
-                    data=csv_out,
+                    "Скачать msp_updated.csv",
+                    data=pipe.csv_bytes,
                     file_name="msp_updated.csv",
                     mime="text/csv",
                     use_container_width=True,
-                    help="Windows-1251, `;` — запасной обмен",
                 )
-            with d2:
+        with d2:
+            if pipe.xml_bytes:
                 st.download_button(
-                    "⬇️ msp_updated.xml",
-                    data=xml_out,
+                    "Скачать msp_updated.xml",
+                    data=pipe.xml_bytes,
                     file_name="msp_updated.xml",
                     mime="application/xml",
                     use_container_width=True,
-                    help="MSPDI XML → File → Open в Project",
+                    help="На Mac: перенесите XML на Windows → Файл → Открыть в Project",
                 )
-            with d3:
-                if xml_patched:
-                    st.download_button(
-                        "⬇️ msp_patched.xml",
-                        data=xml_patched,
-                        file_name="msp_patched.xml",
-                        mime="application/xml",
-                        use_container_width=True,
-                        help="Ваш XML с пропатченными Start/Finish",
-                    )
-                else:
-                    st.caption("Загрузите исходный .xml — появится патч-файл")
 
-            zip_bytes = _zip_outputs(csv_out, xml_out)
-            st.download_button(
-                "⬇️ Всё пакетом (CSV + XML).zip",
-                data=zip_bytes,
-                file_name="msp_updated_pack.zip",
-                mime="application/zip",
-                use_container_width=True,
-            )
+        with st.expander("Отладка schedule (JSON)", expanded=False):
+            st.json(pipe.schedule)
 
-            st.markdown("---")
-            st.subheader("Приёмка (XCA)")
-            matched_ids = [u.task_id for u in updates if u.task_id]
-            st.markdown(
-                """
-| Цель | Как проверить |
-|------|----------------|
-| Перенос в ячейки | Дифф и таблица выше: ВОР / даты / прогноз |
-| Пересчёт хвоста СМР | В Project: сдвиг Id6 тянет последователей |
-| Связи не слетели | Предшественники/Последователи до = после |
-| База | Базовое начало/окончание не меняются |
-"""
-            )
-            st.caption(
-                "Веб-Гант — упрощённый просмотр. Полный каскад и календарь — только в MS Project по XML."
-            )
-
-            if mpp_ok and st.session_state.get("mpp_bytes"):
-                st.markdown("**Вариант A — правка исходного .mpp (COM, локально)**")
-                preserve = st.checkbox(
-                    "Не трогать % завершения и факт. даты (рекомендуется)",
-                    value=True,
-                    key="mpp_preserve",
-                )
-                b1, b2 = st.columns(2)
-                with b1:
-                    if st.button("Сформировать .mpp через Project COM", use_container_width=True):
-                        try:
-                            with st.spinner("MS Project COM…"):
-                                src = st.session_state["mpp_bytes"]
-                                mpp_out = apply_updates_to_mpp(
-                                    src,
-                                    updates,
-                                    preserve_progress=preserve,
-                                    write_dates=True,
-                                    recalculate=True,
-                                )
-                                st.session_state["mpp_out"] = mpp_out
-                                st.session_state["mpp_link_check"] = verify_mpp_links(
-                                    src, mpp_out, matched_ids
-                                )
-                            st.success("MPP готов")
-                        except Exception as e:
-                            st.error(f"Ошибка MPP: {e}")
-                with b2:
-                    if st.session_state.get("mpp_out"):
-                        st.download_button(
-                            "⬇️ msp_updated.mpp",
-                            data=st.session_state["mpp_out"],
-                            file_name="msp_updated.mpp",
-                            mime="application/vnd.ms-project",
-                            use_container_width=True,
-                        )
-                        st.download_button(
-                            "⬇️ ZIP (CSV+XML+MPP)",
-                            data=_zip_outputs(csv_out, xml_out, st.session_state["mpp_out"]),
-                            file_name="msp_updated_full.zip",
-                            mime="application/zip",
-                            use_container_width=True,
-                        )
-                if st.session_state.get("mpp_link_check"):
-                    st.markdown("**Проверка связей после COM**")
-                    st.dataframe(
-                        pd.DataFrame(st.session_state["mpp_link_check"]),
-                        use_container_width=True,
-                        hide_index=True,
-                    )
-
-    with tab_view:
-        st.subheader("Просмотр графика без MS Project")
-        st.caption(
-            "Загрузите экспорт CSV или XML из Project — увидите таблицу и упрощённый Гант в браузере. "
-            "Это не замена Project (календарь/ресурсы/каскад считаются там)."
-        )
-        v1, v2 = st.columns(2)
-        with v1:
-            view_csv = st.file_uploader("CSV графика", type=["csv"], key="view_csv")
-        with v2:
-            view_xml = st.file_uploader("XML графика (MSPDI)", type=["xml"], key="view_xml")
-
-        if use_sample and not view_csv and not view_xml:
-            st.info("Демо: можно нажать кнопку ниже или загрузить свой файл.")
-            if st.button("Показать демо-CSV Ленинский", key="btn_demo_view"):
-                st.session_state["force_demo_csv_view"] = True
-
-        if st.session_state.get("force_demo_csv_view") and not view_csv:
-            view_csv_bytes = _load_sample_csv()[0]
-            fieldnames, rows = load_msp_csv(view_csv_bytes)
-            df = csv_rows_to_schedule_df(rows)
-            st.success(f"Демо CSV: {len(df)} задач")
-            q = st.text_input("Фильтр", key="demo_csv_filter")
-            if q.strip():
-                qq = q.strip().lower()
-                df = df[
-                    df["Ид"].astype(str).str.contains(qq, case=False, na=False)
-                    | df["Название"].astype(str).str.lower().str.contains(qq, na=False)
-                ]
-            render_schedule_gantt(df, title="Демо-график из CSV", max_bars=40)
-            render_schedule_table(df, title="Таблица демо-CSV")
-
-        if view_csv is not None:
-            try:
-                fieldnames, rows = load_msp_csv(view_csv.getvalue())
-                df = csv_rows_to_schedule_df(rows)
-                st.success(f"CSV: {len(df)} задач (`{view_csv.name}`)")
-                q = st.text_input("Фильтр CSV", key="user_csv_filter")
-                if q.strip():
-                    qq = q.strip().lower()
-                    df = df[
-                        df["Ид"].astype(str).str.contains(qq, case=False, na=False)
-                        | df["Название"].astype(str).str.lower().str.contains(qq, na=False)
-                    ]
-                bars = st.slider("Макс. полос (CSV)", 10, 80, 40, key="view_csv_bars")
-                render_schedule_gantt(df, title="Гант из CSV", max_bars=bars)
-                render_schedule_table(df, title="Таблица из CSV")
-            except Exception as e:
-                st.error(f"Ошибка чтения CSV: {e}")
-
-        if view_xml is not None:
-            st.markdown("---")
-            _render_xml_browser_viewer(view_xml.getvalue(), label=view_xml.name or "XML")
-
-        if st.session_state.get("xml_out"):
-            st.markdown("---")
-            st.markdown("**Результат последнего расчёта** уже в сессии — можно скачать XML на вкладке расчёта.")
-            st.download_button(
-                "⬇️ msp_updated.xml (из сессии)",
-                data=st.session_state["xml_out"],
-                file_name="msp_updated.xml",
-                mime="application/xml",
-                key="dl_xml_from_view_tab",
-            )
+    st.markdown(
+        f'<p class="footnote">Демо: sample график '
+        f'<code>{SAMPLE_MPP.name}</code> (локально в sample_data/). '
+        f"Запись .mpp — через COM на Windows. CSV подставляется скрыто только для префилла и доп. выгрузки.</p>",
+        unsafe_allow_html=True,
+    )
 
 
 if __name__ == "__main__":

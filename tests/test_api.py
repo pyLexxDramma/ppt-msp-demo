@@ -1,0 +1,93 @@
+"""API FastAPI: prefill/options/recalc/download (без COM)."""
+
+from __future__ import annotations
+
+from fastapi.testclient import TestClient
+
+from api.main import app
+
+client = TestClient(app)
+
+
+def _valid_body() -> dict:
+    return {
+        "project": "ЖК Ленинский",
+        "project_id": "0feb8a44-a0f4-11ef-af7f-0050560219d5",
+        "period_month": 6,
+        "period_year": 2026,
+        "mode": "last",
+        "task_name": "Фундаменты сборные",
+        "task_id": "6",
+        "vor": 350,
+        "unit": "шт",
+        "prev_cumulative": 150,
+        "weeks": [
+            {"plan": 20, "fact": 10},
+            {"plan": 20, "fact": 30},
+            {"plan": 20, "fact": 0},
+            {"plan": 20, "fact": 15},
+            {"plan": 20, "fact": None},
+        ],
+    }
+
+
+def test_health_and_options() -> None:
+    h = client.get("/api/health")
+    assert h.status_code == 200
+    assert h.json()["ok"] is True
+    o = client.get("/api/options")
+    assert o.status_code == 200
+    data = o.json()
+    assert data["projects"] and data["tasks"] and data["units"]
+
+
+def test_prefill() -> None:
+    r = client.get("/api/prefill")
+    assert r.status_code == 200
+    data = r.json()
+    assert "form" in data and "options" in data
+    assert data["form"]["task_id"]
+
+
+def test_recalc_400_without_fact() -> None:
+    body = _valid_body()
+    body["weeks"] = [{"plan": 10, "fact": None} for _ in range(5)]
+    r = client.post("/api/recalc", json=body)
+    assert r.status_code == 400
+
+
+def test_recalc_ok_shape() -> None:
+    r = client.post("/api/recalc", json=_valid_body())
+    assert r.status_code == 200
+    data = r.json()
+    assert data["job_id"]
+    assert "aggregates" in data
+    assert "schedule" in data
+    assert "downloads" in data and "mpp" in data["downloads"]
+    assert "update" in data
+    assert "after" in data["update"]
+    assert "before" in data["update"]
+    if data["downloads"]["mpp"]:
+        assert data["mpp_error"] in (None, "")
+    else:
+        assert data["mpp_error"]
+        assert "xml" not in data["mpp_error"].lower()
+
+
+def test_download_mpp_404_unknown_job() -> None:
+    r = client.get("/api/jobs/does-not-exist/mpp")
+    assert r.status_code == 404
+
+
+def test_download_mpp_when_available() -> None:
+    recalc = client.post("/api/recalc", json=_valid_body())
+    assert recalc.status_code == 200
+    data = recalc.json()
+    job_id = data["job_id"]
+    r = client.get(f"/api/jobs/{job_id}/mpp")
+    if data["downloads"]["mpp"]:
+        assert r.status_code == 200
+        assert r.headers["content-type"].startswith("application/")
+        assert len(r.content) > 0
+    else:
+        assert r.status_code == 404

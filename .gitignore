@@ -3,6 +3,7 @@
 __pycache__/
 *.pyc
 .venv/
+.venv-local/
 venv/
 .env
 .streamlit/secrets.toml
@@ -10,3 +11,5 @@ sample_data/_*.csv
 sample_data/_*.xml
 _pptx_media/
 results_*/
+frontend/node_modules/
+frontend/dist/

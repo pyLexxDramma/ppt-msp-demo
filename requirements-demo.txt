@@ -3,5 +3,9 @@ pandas>=2.0
 plotly>=5.18
 python-pptx>=1.0
 openpyxl>=3.1
-# optional for variant A (Windows + MS Project):
-# pywin32>=306
+fastapi>=0.110
+uvicorn[standard]>=0.27
+httpx>=0.27
+pytest>=8.0
+# Windows + MS Project: запись обновлённого .mpp через COM
+pywin32>=306; sys_platform == "win32"
