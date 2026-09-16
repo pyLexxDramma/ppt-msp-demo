@@ -626,28 +626,6 @@ export default function App() {
                 {' · '}
                 Окончание {beforeFinish} → {afterFinish}
               </div>
-
-              <div className="result-footer">
-                {mppHref ? (
-                  <a className="btn btn-primary" href={mppHref} download="msp_updated.mpp">
-                    Скачать .mpp
-                  </a>
-                ) : (
-                  <button
-                    type="button"
-                    className="btn btn-primary"
-                    onClick={() =>
-                      showToast(
-                        result.mpp_error ||
-                          'Файл .mpp собирается только на Windows с MS Project. Запустите «Запуск МПП демо».',
-                        'warn',
-                      )
-                    }
-                  >
-                    Скачать .mpp
-                  </button>
-                )}
-              </div>
             </div>
           ) : null}
 

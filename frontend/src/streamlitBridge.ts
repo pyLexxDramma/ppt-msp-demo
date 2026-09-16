@@ -16,6 +16,8 @@ type ArgsListener = (args: StreamlitArgs) => void
 const listeners = new Set<ArgsListener>()
 let lastArgs: StreamlitArgs | null = null
 let readySent = false
+let heightTimer: number | null = null
+let lastPostedHeight = 0
 
 function post(type: string, extra: Record<string, unknown> = {}): void {
   window.parent.postMessage({ isStreamlitMessage: true, type, ...extra }, '*')
@@ -37,34 +39,53 @@ function onMessage(event: MessageEvent): void {
   listeners.forEach((fn) => fn(lastArgs as StreamlitArgs))
 }
 
+/** Высота контента, без window.innerHeight — иначе после раскрытия iframe не сжимается. */
+function measureContentHeight(): number {
+  const root = document.getElementById('root')
+  if (root) {
+    // offsetHeight = фактическая высота блока с контентом
+    return Math.ceil(Math.max(root.scrollHeight, root.offsetHeight, root.getBoundingClientRect().height))
+  }
+  const body = document.body
+  const doc = document.documentElement
+  return Math.ceil(
+    Math.max(body?.scrollHeight || 0, body?.offsetHeight || 0, doc?.scrollHeight || 0, doc?.offsetHeight || 0),
+  )
+}
+
 function ensureListener(): void {
   if (readySent) return
   readySent = true
+  document.documentElement.setAttribute('data-streamlit-component', '1')
   window.addEventListener('message', onMessage)
   post('streamlit:componentReady', { apiVersion: 1 })
   syncHeight()
-  window.addEventListener('resize', syncHeight)
+  window.addEventListener('resize', () => syncHeight())
+  // toggle на <details> (disclosure) — обязательно, иначе после закрытия высота «залипает»
+  document.addEventListener('toggle', () => syncHeight(), true)
   const ro = new ResizeObserver(() => syncHeight())
   ro.observe(document.documentElement)
   const root = document.getElementById('root')
   if (root) ro.observe(root)
-  // После гидрации React высота растёт асинхронно
-  window.setTimeout(syncHeight, 100)
-  window.setTimeout(syncHeight, 500)
-  window.setTimeout(syncHeight, 1500)
+  window.setTimeout(() => syncHeight(), 100)
+  window.setTimeout(() => syncHeight(), 500)
+  window.setTimeout(() => syncHeight(), 1500)
 }
 
 export function syncHeight(): void {
-  const root = document.getElementById('root')
-  const height = Math.max(
-    root?.scrollHeight || 0,
-    document.documentElement.scrollHeight,
-    document.body?.scrollHeight || 0,
-    document.documentElement.offsetHeight,
-    window.innerHeight,
-    900,
-  )
-  post('streamlit:setFrameHeight', { height })
+  if (!isStreamlitComponent() && !readySent) return
+  if (heightTimer != null) window.clearTimeout(heightTimer)
+  // Два кадра: дать details закрыться / layout пересчитаться
+  heightTimer = window.setTimeout(() => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const height = Math.max(measureContentHeight(), 480)
+        if (Math.abs(height - lastPostedHeight) < 2) return
+        lastPostedHeight = height
+        post('streamlit:setFrameHeight', { height })
+      })
+    })
+  }, 30)
 }
 
 export function setComponentValue(value: RecalcEvent): void {

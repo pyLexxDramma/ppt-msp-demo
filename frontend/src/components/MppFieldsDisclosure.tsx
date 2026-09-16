@@ -1,9 +1,21 @@
+import { useEffect, useRef } from 'react'
 import { MPP_FIELDS_UNCHANGED, MPP_FIELDS_UPDATED, FORMULAS } from '../calcHelp'
+import { isStreamlitComponent, syncHeight } from '../streamlitBridge'
 
 /** Скрытый блок под заголовком: что меняем в .mpp и свод формул. */
 export function MppFieldsDisclosure() {
+  const ref = useRef<HTMLDetailsElement>(null)
+
+  useEffect(() => {
+    const el = ref.current
+    if (!el || !isStreamlitComponent()) return
+    const onToggle = () => syncHeight()
+    el.addEventListener('toggle', onToggle)
+    return () => el.removeEventListener('toggle', onToggle)
+  }, [])
+
   return (
-    <details className="disclosure">
+    <details ref={ref} className="disclosure">
       <summary>Что меняется в файле MS Project (.mpp) и как считаются показатели</summary>
       <div className="disclosure-body">
         <p>
