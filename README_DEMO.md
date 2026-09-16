@@ -9,35 +9,10 @@
 
 | UI | Назначение |
 |----|------------|
-| **React SPA** `frontend/` | Основной продуктный UI |
-| **Streamlit** `demo_app.py` | Оболочка: **тот же React UI** в iframe (не старая форма) |
+| **React SPA** `frontend/` | Продуктовый UI (кастомные селекты, тосты, MVP) → деплой на **Vercel** |
+| **Streamlit** `demo_app.py` | Отдельная Streamlit-форма (макет CONALL на widgets) — **свой UI**, не iframe |
 
-Оба ходят в один FastAPI (`api/main.py` + пайплайн `demo/`).
-
-### Streamlit = наш реальный UI
-
-Streamlit больше не рисует свою форму. Он открывает собранный SPA с API:
-
-```bash
-cd ppt-msp-demo
-source .venv/bin/activate
-pip install -r requirements-demo.txt
-
-# 1) собрать React
-cd frontend && npm install && npm run build && cd ..
-
-# 2) API отдаёт /api и статику frontend/dist
-uvicorn api.main:app --reload --port 8000
-
-# 3) Streamlit — iframe на UI
-streamlit run demo_app.py --server.port 8503
-```
-
-Открыть: **http://localhost:8503** (внутри — тот же UI, что на http://127.0.0.1:8000).
-
-Переменная окружения: `PPT_MSP_UI_URL` (по умолчанию `http://127.0.0.1:8000`).
-
-Для разработки с HMR по-прежнему можно: `npm run dev` → http://localhost:5173.
+Оба используют один Python-пайплайн (`demo/form_input.py`, `demo/form_pipeline.py`). React ходит в FastAPI; Streamlit вызывает пайплайн напрямую.
 
 ## Быстрый старт: React + FastAPI
 
@@ -64,18 +39,19 @@ API docs: **http://localhost:8000/docs**
 
 Vite проксирует `/api` → `http://127.0.0.1:8000`.
 
+Для продакшен-фронта: сборка `frontend/` на **Vercel**; API (`uvicorn`) — отдельно (для `.mpp` — Windows + Project). В SPA задайте URL API (CORS на бэкенде).
+
 ### Прозрачность расчётов
 
 Под заголовком — раскрывающийся блок (по умолчанию **свёрнут**): что меняется в `.mpp` и свод формул Mode1.
 
-## Streamlit (тот же React UI)
+## Streamlit (своя форма)
 
 ```bash
-# после npm run build и uvicorn :8000
 streamlit run demo_app.py --server.port 8503
 ```
 
-Старый Streamlit-макет формы удалён: в iframe грузится SPA.
+Отдельный UI на Streamlit-виджетах (не React). Для продуктового интерфейса используйте SPA / Vercel.
 
 ## Sample-данные
 
