@@ -47,20 +47,20 @@ Vite проксирует `/api` → `http://127.0.0.1:8000`.
 
 ## Streamlit = тот же React UI
 
+Достаточно одного процесса — при старте Streamlit **сам** соберёт `frontend/dist` (если нет) и поднимет uvicorn на `:8000`:
+
 ```bash
 cd ppt-msp-demo
 source .venv/bin/activate
-cd frontend && npm install && npm run build && cd ..
-
-# терминал 1 — API + статика SPA
-uvicorn api.main:app --reload --port 8000
-
-# терминал 2 — оболочка
+pip install -r requirements-demo.txt
 streamlit run demo_app.py --server.port 8503
 ```
 
-Открыть **http://localhost:8503** — внутри SPA с `http://127.0.0.1:8000`.  
+Открыть **http://localhost:8503**. Нужны Node.js/npm (для первой сборки SPA).
+
 URL iframe: `PPT_MSP_UI_URL` (по умолчанию `http://127.0.0.1:8000`).
+
+**Streamlit Community Cloud:** iframe на `127.0.0.1` из браузера пользователя не работает. Либо публичный `PPT_MSP_UI_URL` (Vercel SPA + API), либо продуктовый деплой без Streamlit-оболочки. `packages.txt` ставит Node для сборки на Cloud, но без публичного UI URL этого мало.
 
 ## Sample-данные
 

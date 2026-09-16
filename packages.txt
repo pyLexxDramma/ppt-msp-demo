@@ -1,0 +1,5 @@
+# Apt-пакеты для Streamlit Community Cloud (сборка SPA при старте).
+# iframe на 127.0.0.1 из браузера на Cloud всё равно не откроется —
+# для Cloud задайте секрет PPT_MSP_UI_URL на публичный SPA+API.
+nodejs
+npm

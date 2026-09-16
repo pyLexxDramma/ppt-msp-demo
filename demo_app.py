@@ -1,26 +1,28 @@
 """
 Streamlit-оболочка: тот же React UI, что и SPA (1:1).
 
-Нужен запущенный FastAPI со собранным frontend/dist:
+При старте сам собирает frontend/dist (если нет) и поднимает uvicorn,
+если API на PPT_MSP_UI_URL / http://127.0.0.1:8000 ещё не отвечает.
 
-  cd frontend && npm run build
-  uvicorn api.main:app --reload --port 8000
   streamlit run demo_app.py --server.port 8503
 
-URL UI: PPT_MSP_UI_URL (по умолчанию http://127.0.0.1:8000).
+На Streamlit Cloud iframe на 127.0.0.1 из браузера не работает —
+нужен публичный PPT_MSP_UI_URL (например Vercel + API).
 """
 
 from __future__ import annotations
 
-import os
+import sys
 from pathlib import Path
 
 import streamlit as st
 import streamlit.components.v1 as components
 
 ROOT = Path(__file__).resolve().parent
-DIST = ROOT / "frontend" / "dist"
-DEFAULT_UI = "http://127.0.0.1:8000"
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from demo.streamlit_boot import bootstrap, dist_ready  # noqa: E402
 
 st.set_page_config(
     page_title="Данные по объему стройплощадок",
@@ -29,9 +31,6 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-ui_url = (os.environ.get("PPT_MSP_UI_URL") or DEFAULT_UI).rstrip("/")
-
-# Один скролл: гасим прокрутку Streamlit, iframe на весь экран.
 st.markdown(
     """
 <style>
@@ -52,7 +51,6 @@ st.markdown(
     max-width: 100% !important;
   }
   [data-testid="stVerticalBlock"] { gap: 0 !important; }
-  /* сам iframe со SPA — единственный слой прокрутки */
   iframe {
     position: fixed !important;
     inset: 0 !important;
@@ -66,13 +64,21 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-if not DIST.is_dir() or not any(DIST.iterdir()):
-    st.error(
-        "Нет сборки React (`frontend/dist`). Выполните:\n\n"
-        "`cd frontend && npm install && npm run build`\n\n"
-        "Затем запустите API:\n\n"
-        "`uvicorn api.main:app --reload --port 8000`"
-    )
-    st.stop()
+if "ppt_msp_ui_url" not in st.session_state:
+    log: list[str] = []
+    try:
+        with st.spinner(
+            "Подготовка UI…"
+            if dist_ready()
+            else "Сборка React и запуск API (первый старт может занять минуту)…"
+        ):
+            st.session_state["ppt_msp_ui_url"] = bootstrap(log)
+            st.session_state["ppt_msp_boot_log"] = log
+    except Exception as exc:
+        st.error(str(exc))
+        if log:
+            with st.expander("Лог подготовки"):
+                st.code("\n".join(log))
+        st.stop()
 
-components.iframe(ui_url, height=900, scrolling=True)
+components.iframe(st.session_state["ppt_msp_ui_url"], height=900, scrolling=True)
