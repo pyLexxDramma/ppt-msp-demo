@@ -477,7 +477,6 @@ export default function App() {
               <div className="card-head-row">
                 <div>
                   <p className="card-title">Факт накопленный с начала</p>
-                  <p className="card-sub">п. 4.1.1 ТЗ</p>
                 </div>
               </div>
               <div className="stat-row">

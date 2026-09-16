@@ -417,6 +417,7 @@ body {
   display: flex;
   align-items: center;
   gap: 6px;
+  min-height: 0;
 }
 
 .field-label-row label {
@@ -425,6 +426,8 @@ body {
   letter-spacing: 0.03em;
   text-transform: uppercase;
   color: var(--ink-faint);
+  line-height: 1.2;
+  margin: 0;
 }
 
 .info-tip {
@@ -432,6 +435,7 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  align-self: center;
   width: 14px;
   height: 14px;
   border-radius: 50%;
@@ -442,6 +446,7 @@ body {
   font-weight: 800;
   font-style: italic;
   font-family: var(--font-body);
+  line-height: 1;
   cursor: help;
   flex: none;
 }
@@ -906,6 +911,17 @@ input.invalid,
   color: var(--ink-faint);
   margin: 0;
   min-height: 2.4em;
+  line-height: 1.2;
+}
+
+/* FieldLabel внутри .stat: не тянуть label на 2 строки — иначе «i» съезжает */
+.stat .field-label-row {
+  align-items: center;
+  min-height: 1.2em;
+}
+
+.stat .field-label-row label {
+  min-height: 0;
   line-height: 1.2;
 }
 
