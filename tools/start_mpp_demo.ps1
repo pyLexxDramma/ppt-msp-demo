@@ -20,11 +20,23 @@ function Test-PortOpen([int]$Port) {
     return [bool](Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue)
 }
 
-if (-not (Test-PortOpen $ApiPort)) {
-    Start-Process -FilePath $Python -WorkingDirectory $Root -ArgumentList @(
-        "-m", "uvicorn", "api.main:app", "--host", "127.0.0.1", "--port", "$ApiPort"
-    )
+function Test-PublicOk([string]$Url) {
+    if (-not $Url) { return $false }
+    try {
+        $r = Invoke-WebRequest -Uri ($Url + "/api/health") -UseBasicParsing -TimeoutSec 20
+        return $r.Content -match '"ok":true'
+    } catch {
+        return $false
+    }
 }
+
+Get-NetTCPConnection -LocalPort $ApiPort -State Listen -ErrorAction SilentlyContinue |
+    ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }
+Start-Sleep -Seconds 1
+Start-Process -FilePath $Python -WorkingDirectory $Root -ArgumentList @(
+    "-m", "uvicorn", "api.main:app", "--host", "127.0.0.1", "--port", "$ApiPort"
+)
+Start-Sleep -Seconds 2
 
 if (-not (Test-PortOpen $UiPort)) {
     $env:PPT_MSP_LOCAL_MPP = "1"
@@ -59,6 +71,18 @@ Set-Content -LiteralPath $UrlFile -Value $publicUrl -Encoding ascii
 $desk = Join-Path ([Environment]::GetFolderPath("Desktop")) "ppt-msp-windows-api.txt"
 Set-Content -LiteralPath $desk -Value $publicUrl -Encoding ascii
 Set-Clipboard -Value $publicUrl
+
+Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match "watch_mpp_tunnel.ps1" } | ForEach-Object {
+    Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+}
+Start-Sleep -Seconds 20
+if (-not (Test-PublicOk $publicUrl)) {
+    Write-Host "Tunnel DNS still warming; watchdog will retry later."
+}
+Start-Process -FilePath "powershell.exe" -ArgumentList @(
+    "-NoProfile", "-ExecutionPolicy", "Bypass",
+    "-File", (Join-Path $Root "tools\watch_mpp_tunnel.ps1")
+) -WindowStyle Minimized
 
 Start-Sleep -Seconds 2
 Start-Process "http://127.0.0.1:$UiPort"

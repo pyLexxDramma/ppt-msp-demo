@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import base64
 import uuid
 from typing import Any
 
@@ -67,9 +66,8 @@ def build_recalc(
         "com_available": pipe.com_available,
         "mpp_error": mpp_error,
         "downloads": {"mpp": pipe.mpp_bytes is not None},
-        "mpp_b64": (
-            base64.b64encode(pipe.mpp_bytes).decode("ascii") if pipe.mpp_bytes else None
-        ),
+        # Не кладём .mpp в JSON: 7+ МБ через туннель роняют Cloudflare (530).
+        "mpp_b64": None,
         "update": {
             "task_id": pipe.update.task_id,
             "name": pipe.update.name,

@@ -89,7 +89,13 @@ def remote_recalc(state_dict: dict[str, Any], timeout: float = 180.0) -> dict[st
     with httpx.Client(timeout=timeout) as client:
         resp = client.post(f"{base}/api/recalc", json=state_dict)
         resp.raise_for_status()
-        return resp.json()
+        data = resp.json()
+        job_id = data.get("job_id")
+        if data.get("downloads", {}).get("mpp") and job_id:
+            file_resp = client.get(f"{base}/api/jobs/{job_id}/mpp")
+            file_resp.raise_for_status()
+            data["mpp_b64"] = base64.b64encode(file_resp.content).decode("ascii")
+        return data
 
 
 def pipe_from_remote(data: dict[str, Any]) -> SimpleNamespace:
