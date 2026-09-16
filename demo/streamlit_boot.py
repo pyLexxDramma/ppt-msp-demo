@@ -93,8 +93,8 @@ def ensure_api(log: list[str] | None = None, wait_s: float = 20.0) -> str:
     if not local:
         raise RuntimeError(
             f"API недоступен по {base}. "
-            "Для удалённого UI задайте рабочий PPT_MSP_UI_URL "
-            "(на Streamlit Cloud iframe на 127.0.0.1 из браузера не работает)."
+            "Задайте PPT_MSP_UI_URL на локальный адрес API "
+            "(по умолчанию http://127.0.0.1:8000) или освободите порт 8000."
         )
 
     if not dist_ready():

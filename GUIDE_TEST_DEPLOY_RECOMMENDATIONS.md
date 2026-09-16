@@ -4,7 +4,7 @@
 
 Связанные файлы:
 - SPA: [`frontend/`](frontend/) + API [`api/main.py`](api/main.py)
-- Streamlit (запасной UI): [`demo_app.py`](demo_app.py)
+- Streamlit-оболочка (iframe React): [`demo_app.py`](demo_app.py)
 - Краткая шпаргалка: [`README_DEMO.md`](README_DEMO.md)
 - Показ заказчику: [`DEMO_SHOW.md`](DEMO_SHOW.md)
 - Код пайплайна: папка [`demo/`](demo/)
@@ -16,7 +16,7 @@
 
 **Продуктовый прототип MVP:** React SPA + FastAPI. Инженер вводит **план/факт по неделям** → **Режим №1** → на Windows обновляется sample **`.mpp` через COM** → скачивание файла для MS Project.
 
-Streamlit (`demo_app.py`) остаётся параллельным запасным UI на том же Python-пайплайне.
+Streamlit (`demo_app.py`) — оболочка с **тем же React UI** в iframe (отдельной Streamlit-формы нет).
 
 Формулировка КП: *«веб-ввод данных → расчёт сроков начала/окончания в MS Project по фактическим данным → отображение»*.
 
