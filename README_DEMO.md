@@ -10,9 +10,9 @@
 | UI | Назначение |
 |----|------------|
 | **React SPA** `frontend/` | Продуктовый UI (кастомные селекты, тосты, MVP) → деплой на **Vercel** |
-| **Streamlit** `demo_app.py` | Отдельная Streamlit-форма (макет CONALL на widgets) — **свой UI**, не iframe |
+| **Streamlit** `demo_app.py` | Оболочка: **тот же React UI** в iframe (1:1) |
 
-Оба используют один Python-пайплайн (`demo/form_input.py`, `demo/form_pipeline.py`). React ходит в FastAPI; Streamlit вызывает пайплайн напрямую.
+Оба ходят в один FastAPI (`api/main.py` + пайплайн `demo/`).
 
 ## Быстрый старт: React + FastAPI
 
@@ -45,13 +45,22 @@ Vite проксирует `/api` → `http://127.0.0.1:8000`.
 
 Под заголовком — раскрывающийся блок (по умолчанию **свёрнут**): что меняется в `.mpp` и свод формул Mode1.
 
-## Streamlit (своя форма)
+## Streamlit = тот же React UI
 
 ```bash
+cd ppt-msp-demo
+source .venv/bin/activate
+cd frontend && npm install && npm run build && cd ..
+
+# терминал 1 — API + статика SPA
+uvicorn api.main:app --reload --port 8000
+
+# терминал 2 — оболочка
 streamlit run demo_app.py --server.port 8503
 ```
 
-Отдельный UI на Streamlit-виджетах (не React). Для продуктового интерфейса используйте SPA / Vercel.
+Открыть **http://localhost:8503** — внутри SPA с `http://127.0.0.1:8000`.  
+URL iframe: `PPT_MSP_UI_URL` (по умолчанию `http://127.0.0.1:8000`).
 
 ## Sample-данные
 

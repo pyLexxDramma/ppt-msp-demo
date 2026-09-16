@@ -228,7 +228,7 @@ export default function App() {
           </p>
           <div className="hero-underline" />
         </div>
-      </div>
+        </div>
 
       <main className="main">
         <div className="container">
