@@ -29,23 +29,22 @@ def _prefill() -> dict:
 
 
 def render() -> None:
+    # Не фиксируем iframe на 100vh и не гасим overflow — иначе на Cloud
+    # контент React обрезается и страница не скроллится. Высоту задаёт
+    # streamlitBridge.setFrameHeight → скролл у самой страницы Streamlit.
     st.markdown(
         """
 <style>
   #MainMenu, footer, header[data-testid="stHeader"] { display: none; }
-  html, body, [data-testid="stAppViewContainer"],
-  [data-testid="stAppViewContainer"] > .main, [data-testid="stMain"],
-  .main .block-container, [data-testid="stVerticalBlock"],
-  [data-testid="stVerticalBlockBorderWrapper"] {
-    height: 100% !important; max-height: 100vh !important;
-    margin: 0 !important; padding: 0 !important; overflow: hidden !important;
+  .block-container {
+    max-width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
   }
-  .block-container { max-width: 100% !important; padding: 0 !important; }
   [data-testid="stVerticalBlock"] { gap: 0 !important; }
   iframe {
-    position: fixed !important; inset: 0 !important;
-    width: 100vw !important; height: 100vh !important;
-    border: 0 !important; z-index: 1000;
+    border: 0 !important;
+    width: 100% !important;
   }
 </style>
 """,

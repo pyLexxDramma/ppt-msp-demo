@@ -27,31 +27,22 @@ def _show_error(exc: BaseException) -> None:
 
 
 def _iframe_css() -> None:
+    # Fallback-iframe на локальный SPA: один слой скролла внутри iframe.
     st.markdown(
         """
 <style>
   #MainMenu, footer, header[data-testid="stHeader"] { display: none; }
-  html, body, [data-testid="stAppViewContainer"],
-  [data-testid="stAppViewContainer"] > .main,
-  [data-testid="stMain"],
-  .main .block-container,
-  [data-testid="stVerticalBlock"],
-  [data-testid="stVerticalBlockBorderWrapper"] {
-    height: 100% !important;
-    max-height: 100vh !important;
-    margin: 0 !important;
+  .block-container {
+    max-width: 100% !important;
     padding: 0 !important;
-    overflow: hidden !important;
+    margin: 0 !important;
   }
-  .block-container { max-width: 100% !important; }
   [data-testid="stVerticalBlock"] { gap: 0 !important; }
   iframe {
-    position: fixed !important;
-    inset: 0 !important;
-    width: 100vw !important;
+    display: block !important;
+    width: 100% !important;
     height: 100vh !important;
     border: 0 !important;
-    z-index: 1000;
   }
 </style>
 """,
