@@ -48,7 +48,7 @@ for ($i = 0; $i -lt 40; $i++) {
     Start-Sleep -Seconds 1
     if (-not (Test-Path $LogFile)) { continue }
     $text = Get-Content -LiteralPath $LogFile -Raw -ErrorAction SilentlyContinue
-    if ($text -match "https://[a-z0-9-]+\.trycloudflare\.com") {
+    if ($text -match "https://(?!logs-)[a-z0-9-]+\.trycloudflare\.com") {
         $publicUrl = $Matches[0]
         break
     }

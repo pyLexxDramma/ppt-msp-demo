@@ -81,14 +81,17 @@ def render() -> None:
         state = FormState.from_dict(event.get("form") or {})
         if not form_ready_for_recalc(state):
             raise ValueError("Нужны ВОР > 0 и хотя бы одна неделя с фактом > 0")
-        remote = None
-        try:
-            from demo.windows_host import remote_recalc
+        from demo.windows_host import remote_recalc, resolve_windows_api_url
 
+        if resolve_windows_api_url():
             remote = remote_recalc(state.to_dict())
-        except Exception:
-            remote = None
-        st.session_state["ppt_react_result"] = remote or recalc_payload(state)
+            if not remote or not remote.get("downloads", {}).get("mpp"):
+                raise ValueError(
+                    "Windows-хост не отдал .mpp. Запустите «Запуск МПП демо.bat» и повторите."
+                )
+            st.session_state["ppt_react_result"] = remote
+        else:
+            st.session_state["ppt_react_result"] = recalc_payload(state)
     except Exception as exc:
         st.session_state["ppt_react_error"] = str(exc)
         st.session_state["ppt_react_result"] = None
