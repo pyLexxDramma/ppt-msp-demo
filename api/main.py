@@ -37,6 +37,7 @@ app.add_middleware(
         "https://bi-analytics-msp.vercel.app",
         "https://ppt-msp-demo-2j2hmuumc5qfyah695rqqd.streamlit.app",
     ],
+    allow_origin_regex=r"https://.*\.(streamlit\.app|vercel\.app)",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

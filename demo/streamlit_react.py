@@ -33,19 +33,15 @@ def render() -> None:
         """
 <style>
   #MainMenu, footer, header[data-testid="stHeader"] { display: none; }
-  html, body, [data-testid="stAppViewContainer"],
-  [data-testid="stAppViewContainer"] > .main, [data-testid="stMain"],
-  .main .block-container, [data-testid="stVerticalBlock"],
-  [data-testid="stVerticalBlockBorderWrapper"] {
-    height: 100% !important; max-height: 100vh !important;
-    margin: 0 !important; padding: 0 !important; overflow: hidden !important;
+  .block-container {
+    max-width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
   }
-  .block-container { max-width: 100% !important; padding: 0 !important; }
   [data-testid="stVerticalBlock"] { gap: 0 !important; }
   iframe {
-    position: fixed !important; inset: 0 !important;
-    width: 100vw !important; height: 100vh !important;
-    border: 0 !important; z-index: 1000;
+    border: 0 !important;
+    width: 100% !important;
   }
 </style>
 """,
@@ -82,7 +78,14 @@ def render() -> None:
         state = FormState.from_dict(event.get("form") or {})
         if not form_ready_for_recalc(state):
             raise ValueError("Нужны ВОР > 0 и хотя бы одна неделя с фактом > 0")
-        st.session_state["ppt_react_result"] = recalc_payload(state)
+        remote = None
+        try:
+            from demo.windows_host import remote_recalc
+
+            remote = remote_recalc(state.to_dict())
+        except Exception:
+            remote = None
+        st.session_state["ppt_react_result"] = remote or recalc_payload(state)
     except Exception as exc:
         st.session_state["ppt_react_error"] = str(exc)
         st.session_state["ppt_react_result"] = None

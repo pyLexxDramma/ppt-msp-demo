@@ -7,6 +7,42 @@ import {
 import type { FormState, RecalcResult } from './types'
 import type { FormOptions } from './options'
 
+const DISCOVERY_URL =
+  'https://raw.githubusercontent.com/pyLexxDramma/ppt-msp-demo/main/sample_data/windows_api_url.txt'
+
+let cachedBase: string | null | undefined
+
+async function resolveApiBase(): Promise<string> {
+  if (cachedBase !== undefined) return cachedBase || ''
+  const fromEnv = String(import.meta.env.VITE_API_URL || '').trim().replace(/\/$/, '')
+  if (fromEnv.startsWith('http')) {
+    cachedBase = fromEnv
+    return fromEnv
+  }
+  try {
+    const res = await fetch(DISCOVERY_URL, { cache: 'no-store' })
+    if (res.ok) {
+      const line = (await res.text())
+        .split('\n')
+        .map((s) => s.trim())
+        .find((s) => s.startsWith('https://'))
+      if (line) {
+        cachedBase = line.replace(/\/$/, '')
+        return cachedBase
+      }
+    }
+  } catch {
+    /* offline */
+  }
+  cachedBase = ''
+  return ''
+}
+
+function apiPath(path: string, base: string): string {
+  if (!base) return path
+  return `${base}${path}`
+}
+
 async function parseError(res: Response): Promise<string> {
   try {
     const data = await res.json()
@@ -32,7 +68,8 @@ export async function fetchPrefill(): Promise<{
       options: FormOptions
     }
   }
-  const res = await fetch('/api/prefill')
+  const base = await resolveApiBase()
+  const res = await fetch(apiPath('/api/prefill', base))
   if (!res.ok) throw new Error(await parseError(res))
   return res.json()
 }
@@ -45,7 +82,8 @@ export async function postRecalc(form: FormState): Promise<RecalcResult> {
     if (args.error) throw new Error(args.error)
     return args.result as RecalcResult
   }
-  const res = await fetch('/api/recalc', {
+  const base = await resolveApiBase()
+  const res = await fetch(apiPath('/api/recalc', base), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(form),
@@ -55,7 +93,8 @@ export async function postRecalc(form: FormState): Promise<RecalcResult> {
 }
 
 export function downloadUrl(jobId: string, kind: 'mpp' = 'mpp'): string {
-  return `/api/jobs/${jobId}/${kind}`
+  const base = cachedBase || ''
+  return apiPath(`/api/jobs/${jobId}/${kind}`, base)
 }
 
 export function mppDownloadHref(result: RecalcResult): string | null {
