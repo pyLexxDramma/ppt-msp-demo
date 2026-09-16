@@ -2,9 +2,8 @@
 Streamlit entrypoint.
 
 Локально: React SPA в iframe (автосборка dist + uvicorn при необходимости).
-Streamlit Cloud: нативная форма (без npm/uvicorn) — иначе Cloud падает с «Oh no».
-
-Публичный React на Cloud: секрет/env PPT_MSP_UI_URL=https://ваш-spa-или-api
+Streamlit Cloud: тот же React из frontend/dist (без npm/uvicorn); расчёт в Python.
+Публичный URL iframe: секрет/env PPT_MSP_UI_URL.
 """
 
 from __future__ import annotations
@@ -21,6 +20,8 @@ if str(ROOT) not in sys.path:
 
 
 def _is_streamlit_cloud() -> bool:
+    if os.environ.get("PPT_MSP_FORCE_CLOUD", "").lower() in {"1", "true", "yes"}:
+        return True
     if os.environ.get("PPT_MSP_FORCE_FORM", "").lower() in {"1", "true", "yes"}:
         return True
     if os.environ.get("PPT_MSP_FORCE_IFRAME", "").lower() in {"1", "true", "yes"}:
@@ -34,6 +35,12 @@ def _is_streamlit_cloud() -> bool:
         if val in {"1", "true", "cloud", "sharing"}:
             return True
     return False
+
+
+def _iframe_override() -> str | None:
+    """Локальный Vite/API: PPT_MSP_IFRAME_URL=http://127.0.0.1:5173"""
+    url = (os.environ.get("PPT_MSP_IFRAME_URL") or "").strip().rstrip("/")
+    return url or None
 
 
 def _public_ui_url() -> str | None:
@@ -58,9 +65,9 @@ st.set_page_config(
 )
 
 cloud = _is_streamlit_cloud()
-public_ui = _public_ui_url()
+public_ui = _iframe_override() or _public_ui_url()
 
-# Cloud + публичный SPA URL → iframe без локального bootstrap
+# Готовый SPA URL (Vite локально или публичный) → iframe без bootstrap
 if public_ui:
     import streamlit.components.v1 as components
 
@@ -87,18 +94,20 @@ if public_ui:
     components.iframe(public_ui, height=900, scrolling=True)
     st.stop()
 
-# Cloud без публичного URL → стабильная нативная форма (без npm/uvicorn)
+# Cloud без публичного URL → собранный React (компонент) или нативная форма
 if cloud:
-    from demo.streamlit_form import render  # noqa: E402
+    from demo.streamlit_react import dist_ready, render as render_react  # noqa: E402
+    from demo.streamlit_form import render as render_form  # noqa: E402
 
-    render(
-        cloud_note=(
-            "Streamlit Cloud: показана нативная форма (без iframe). "
-            "Пиксель-в-пиксель React UI здесь недоступен — iframe на 127.0.0.1 "
-            "из браузера не работает. Для React задайте секрет PPT_MSP_UI_URL "
-            "на публичный SPA/API или открывайте демо локально."
+    if dist_ready():
+        render_react()
+    else:
+        render_form(
+            cloud_note=(
+                "Streamlit Cloud: нет frontend/dist — показана нативная форма. "
+                "Соберите SPA (npm run build) и закоммитьте frontend/dist."
+            )
         )
-    )
     st.stop()
 
 # Локально: bootstrap React + uvicorn, при сбое — форма

@@ -1,3 +1,2 @@
 # Apt-пакеты для Streamlit Community Cloud.
-# Node/npm специально НЕ ставим: сборка SPA на Cloud при старте валит приложение («Oh no»).
-# На Cloud работает нативная форма; React — через публичный PPT_MSP_UI_URL.
+# Node/npm не ставим: React берётся из закоммиченного frontend/dist.

@@ -60,8 +60,7 @@ streamlit run demo_app.py --server.port 8503
 
 URL iframe: `PPT_MSP_UI_URL` (по умолчанию `http://127.0.0.1:8000`).
 
-**Streamlit Community Cloud:** при деплое открывается **нативная форма** (без npm/uvicorn) — иначе Cloud падает с «Oh no».  
-Пиксельный React на Cloud: задайте секрет `PPT_MSP_UI_URL` на публичный SPA/API (Vercel). Локально по-прежнему iframe + автосборкa.
+**Streamlit Community Cloud:** тот же React из закоммиченного `frontend/dist` (без npm/uvicorn). Расчёт Mode1 идёт в Python на Cloud. Файл `.mpp` на Linux/Cloud не собирается (нужен Windows + MS Project).
 
 ## Sample-данные
 

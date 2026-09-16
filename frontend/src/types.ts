@@ -74,6 +74,7 @@ export type RecalcResult = {
   downloads: {
     mpp: boolean
   }
+  mpp_b64?: string | null
   update: {
     task_id: string
     name: string
