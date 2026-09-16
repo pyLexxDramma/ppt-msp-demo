@@ -39,6 +39,10 @@ app.add_middleware(
         "http://127.0.0.1:5173",
         "http://localhost:4173",
         "http://127.0.0.1:4173",
+        "http://localhost:8501",
+        "http://127.0.0.1:8501",
+        "http://localhost:8503",
+        "http://127.0.0.1:8503",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -211,6 +215,18 @@ def download_xml(job_id: str) -> Response:
     )
 
 
-@app.get("/")
-def root() -> dict[str, str]:
-    return {"service": "ppt-msp-demo API", "docs": "/docs"}
+# SPA: после всех /api — отдача frontend/dist (npm run build)
+_DIST = ROOT / "frontend" / "dist"
+if _DIST.exists() and (_DIST / "index.html").exists():
+    from fastapi.staticfiles import StaticFiles
+
+    app.mount("/", StaticFiles(directory=str(_DIST), html=True), name="spa")
+else:
+
+    @app.get("/")
+    def root() -> dict[str, str]:
+        return {
+            "service": "ppt-msp-demo API",
+            "docs": "/docs",
+            "hint": "Соберите UI: cd frontend && npm run build — тогда / отдаст SPA",
+        }

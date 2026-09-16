@@ -9,10 +9,35 @@
 
 | UI | Назначение |
 |----|------------|
-| **React SPA** `frontend/` | Основной продуктный UI (стили макета CONALL) |
-| **Streamlit** `demo_app.py` | Быстрое демо / запасной контур |
+| **React SPA** `frontend/` | Основной продуктный UI |
+| **Streamlit** `demo_app.py` | Оболочка: **тот же React UI** в iframe (не старая форма) |
 
-Оба используют один Python-пайплайн (`demo/form_input.py`, `demo/form_pipeline.py`).
+Оба ходят в один FastAPI (`api/main.py` + пайплайн `demo/`).
+
+### Streamlit = наш реальный UI
+
+Streamlit больше не рисует свою форму. Он открывает собранный SPA с API:
+
+```bash
+cd ppt-msp-demo
+source .venv/bin/activate
+pip install -r requirements-demo.txt
+
+# 1) собрать React
+cd frontend && npm install && npm run build && cd ..
+
+# 2) API отдаёт /api и статику frontend/dist
+uvicorn api.main:app --reload --port 8000
+
+# 3) Streamlit — iframe на UI
+streamlit run demo_app.py --server.port 8503
+```
+
+Открыть: **http://localhost:8503** (внутри — тот же UI, что на http://127.0.0.1:8000).
+
+Переменная окружения: `PPT_MSP_UI_URL` (по умолчанию `http://127.0.0.1:8000`).
+
+Для разработки с HMR по-прежнему можно: `npm run dev` → http://localhost:5173.
 
 ## Быстрый старт: React + FastAPI
 
@@ -43,11 +68,14 @@ Vite проксирует `/api` → `http://127.0.0.1:8000`.
 
 Под заголовком — раскрывающийся блок (по умолчанию **свёрнут**): что меняется в `.mpp` и свод формул Mode1.
 
-## Streamlit (демо)
+## Streamlit (тот же React UI)
 
 ```bash
+# после npm run build и uvicorn :8000
 streamlit run demo_app.py --server.port 8503
 ```
+
+Старый Streamlit-макет формы удалён: в iframe грузится SPA.
 
 ## Sample-данные
 
