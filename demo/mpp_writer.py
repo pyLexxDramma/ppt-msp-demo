@@ -11,9 +11,12 @@
 from __future__ import annotations
 
 import tempfile
+import threading
 from datetime import date, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+
+_COM_LOCK = threading.Lock()
 
 if TYPE_CHECKING:
     from .build_update import TaskUpdate
@@ -170,7 +173,8 @@ def apply_updates_to_mpp(
     if not by_id:
         return mpp_bytes
 
-    with tempfile.TemporaryDirectory() as td:
+    with _COM_LOCK:
+      with tempfile.TemporaryDirectory() as td:
         src = Path(td) / "in.mpp"
         out = Path(td) / "out.mpp"
         src.write_bytes(mpp_bytes)
