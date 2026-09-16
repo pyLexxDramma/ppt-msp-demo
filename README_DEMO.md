@@ -60,7 +60,7 @@ streamlit run demo_app.py --server.port 8503
 
 URL iframe: `PPT_MSP_UI_URL` (по умолчанию `http://127.0.0.1:8000`).
 
-**Streamlit Community Cloud:** тот же React из закоммиченного `frontend/dist` (без npm/uvicorn). Расчёт Mode1 идёт в Python на Cloud. Файл `.mpp` на Linux/Cloud не собирается (нужен Windows + MS Project).
+**Streamlit Community Cloud:** нативная форма (тот же Mode1). React-компонент и uvicorn на Cloud не запускаем — из‑за них приложение падает с «Error running app». Пиксельный React — локально или через публичный `PPT_MSP_UI_URL`. `.mpp` на Cloud нет (нужен Windows + MS Project).
 
 ## Sample-данные
 

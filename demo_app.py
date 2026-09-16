@@ -1,9 +1,9 @@
 """
 Streamlit entrypoint.
 
-Локально: React SPA в iframe (автосборка dist + uvicorn при необходимости).
-Streamlit Cloud: тот же React из frontend/dist (без npm/uvicorn); расчёт в Python.
-Публичный URL iframe: секрет/env PPT_MSP_UI_URL.
+Локально (Windows): React в iframe, при необходимости сборка + uvicorn.
+Streamlit Cloud / Linux: только нативная форма. Custom component и uvicorn
+на Cloud роняют приложение («Error running app» / «Oh no»).
 """
 
 from __future__ import annotations
@@ -19,56 +19,32 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 
-def _is_streamlit_cloud() -> bool:
-    if os.environ.get("PPT_MSP_FORCE_CLOUD", "").lower() in {"1", "true", "yes"}:
+def _flag(name: str) -> bool:
+    return os.environ.get(name, "").lower() in {"1", "true", "yes"}
+
+
+def _is_local_machine() -> bool:
+    if _flag("PPT_MSP_FORCE_IFRAME"):
         return True
-    if os.environ.get("PPT_MSP_FORCE_FORM", "").lower() in {"1", "true", "yes"}:
-        return True
-    if os.environ.get("PPT_MSP_FORCE_IFRAME", "").lower() in {"1", "true", "yes"}:
+    if _flag("PPT_MSP_FORCE_CLOUD") or _flag("PPT_MSP_FORCE_FORM"):
         return False
-    # Community Cloud mounts app under /mount/src
-    if Path("/mount/src").exists():
-        return True
-    # Streamlit Cloud / Snowflake runtime hints
+    if Path("/mount/src").exists() or Path("/home/appuser").exists():
+        return False
     for key in ("STREAMLIT_SHARE", "STREAMLIT_RUNTIME_ENVIRONMENT"):
         val = (os.environ.get(key) or "").lower()
         if val in {"1", "true", "cloud", "sharing"}:
-            return True
-    return False
+            return False
+    return sys.platform == "win32"
 
 
-def _iframe_override() -> str | None:
-    """Локальный Vite/API: PPT_MSP_IFRAME_URL=http://127.0.0.1:5173"""
-    url = (os.environ.get("PPT_MSP_IFRAME_URL") or "").strip().rstrip("/")
+def _iframe_url() -> str | None:
+    url = (os.environ.get("PPT_MSP_IFRAME_URL") or os.environ.get("PPT_MSP_UI_URL") or "").strip().rstrip("/")
+    if url.startswith("http://127.0.0.1") or url.startswith("http://localhost"):
+        return url if _is_local_machine() else None
     return url or None
 
 
-def _public_ui_url() -> str | None:
-    url = (os.environ.get("PPT_MSP_UI_URL") or "").strip().rstrip("/")
-    if not url:
-        try:
-            url = str(st.secrets.get("PPT_MSP_UI_URL", "")).strip().rstrip("/")
-        except Exception:
-            url = ""
-    if not url:
-        return None
-    if url.startswith("http://127.0.0.1") or url.startswith("http://localhost"):
-        return None
-    return url
-
-
-st.set_page_config(
-    page_title="Данные по объему стройплощадок",
-    page_icon="Λ",
-    layout="wide",
-    initial_sidebar_state="collapsed",
-)
-
-cloud = _is_streamlit_cloud()
-public_ui = _iframe_override() or _public_ui_url()
-
-# Готовый SPA URL (Vite локально или публичный) → iframe без bootstrap
-if public_ui:
+def _show_iframe(url: str) -> None:
     import streamlit.components.v1 as components
 
     st.markdown(
@@ -91,29 +67,35 @@ if public_ui:
 """,
         unsafe_allow_html=True,
     )
-    components.iframe(public_ui, height=900, scrolling=True)
+    components.iframe(url, height=900, scrolling=True)
+
+
+st.set_page_config(
+    page_title="Данные по объему стройплощадок",
+    page_icon="Λ",
+    layout="wide",
+    initial_sidebar_state="collapsed",
+)
+
+local = _is_local_machine()
+public_ui = _iframe_url()
+
+if public_ui and not (public_ui.startswith("http://127.0.0.1") or public_ui.startswith("http://localhost")):
+    _show_iframe(public_ui)
     st.stop()
 
-# Cloud без публичного URL → собранный React (компонент) или нативная форма
-if cloud:
-    from demo.streamlit_react import dist_ready, render as render_react  # noqa: E402
+if not local:
     from demo.streamlit_form import render as render_form  # noqa: E402
 
-    if dist_ready():
-        render_react()
-    else:
-        render_form(
-            cloud_note=(
-                "Streamlit Cloud: нет frontend/dist — показана нативная форма. "
-                "Соберите SPA (npm run build) и закоммитьте frontend/dist."
-            )
-        )
+    render_form()
     st.stop()
 
-# Локально: bootstrap React + uvicorn, при сбое — форма
+if public_ui:
+    _show_iframe(public_ui)
+    st.stop()
+
 from demo.streamlit_boot import bootstrap, dist_ready  # noqa: E402
 from demo.streamlit_form import render as render_form  # noqa: E402
-import streamlit.components.v1 as components
 
 if "ppt_msp_ui_url" not in st.session_state and "ppt_msp_use_form" not in st.session_state:
     log: list[str] = []
@@ -139,26 +121,4 @@ if st.session_state.get("ppt_msp_use_form"):
     )
     st.stop()
 
-st.markdown(
-    """
-<style>
-  #MainMenu, footer, header[data-testid="stHeader"] { display: none; }
-  html, body, [data-testid="stAppViewContainer"],
-  [data-testid="stAppViewContainer"] > .main, [data-testid="stMain"],
-  .main .block-container, [data-testid="stVerticalBlock"],
-  [data-testid="stVerticalBlockBorderWrapper"] {
-    height: 100% !important; max-height: 100vh !important;
-    margin: 0 !important; padding: 0 !important; overflow: hidden !important;
-  }
-  .block-container { max-width: 100% !important; }
-  [data-testid="stVerticalBlock"] { gap: 0 !important; }
-  iframe {
-    position: fixed !important; inset: 0 !important;
-    width: 100vw !important; height: 100vh !important;
-    border: 0 !important; z-index: 1000;
-  }
-</style>
-""",
-    unsafe_allow_html=True,
-)
-components.iframe(st.session_state["ppt_msp_ui_url"], height=900, scrolling=True)
+_show_iframe(st.session_state["ppt_msp_ui_url"])
