@@ -60,7 +60,8 @@ streamlit run demo_app.py --server.port 8503
 
 URL iframe: `PPT_MSP_UI_URL` (по умолчанию `http://127.0.0.1:8000`).
 
-**Streamlit Community Cloud:** iframe на `127.0.0.1` из браузера пользователя не работает. Либо публичный `PPT_MSP_UI_URL` (Vercel SPA + API), либо продуктовый деплой без Streamlit-оболочки. `packages.txt` ставит Node для сборки на Cloud, но без публичного UI URL этого мало.
+**Streamlit Community Cloud:** при деплое открывается **нативная форма** (без npm/uvicorn) — иначе Cloud падает с «Oh no».  
+Пиксельный React на Cloud: задайте секрет `PPT_MSP_UI_URL` на публичный SPA/API (Vercel). Локально по-прежнему iframe + автосборкa.
 
 ## Sample-данные
 
