@@ -1,2 +1,0 @@
-# Apt-пакеты для Streamlit Community Cloud (при необходимости).
-# UI — только React; Community Cloud для этого демо не целевой контур.

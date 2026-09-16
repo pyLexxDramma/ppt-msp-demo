@@ -8,13 +8,11 @@
 ## UI
 
 Единственный UI — **React SPA** (`frontend/`).  
-**Streamlit** (`demo_app.py`) — только оболочка: тот же React в iframe (1:1). Отдельной Streamlit-формы нет.
+**Streamlit** (`demo_app.py`) — оболочка: тот же React (компонент из `frontend/dist` или iframe на локальный API). Отдельной Streamlit-формы нет.
 
-Оба контура ходят в FastAPI (`api/main.py` + пайплайн `demo/`).
+## Запуск через Streamlit
 
-## Запуск через Streamlit (рекомендуется для показа)
-
-Нужны Python, Node.js/npm. При старте Streamlit сам соберёт `frontend/dist` и поднимет uvicorn на `:8000`:
+Нужны Python и (для первой сборки) Node.js/npm. Если `frontend/dist` уже есть — Node не обязателен:
 
 ```bash
 cd ppt-msp-demo
@@ -28,6 +26,8 @@ streamlit run demo_app.py --server.port 8503
 ```
 
 Открыть: **http://localhost:8503**
+
+При отсутствии `frontend/dist` Streamlit сам соберёт SPA и при необходимости поднимет uvicorn на `:8000`.
 
 ## Запуск React + API отдельно (разработка)
 
@@ -90,13 +90,15 @@ Vite проксирует `/api` → `http://127.0.0.1:8000`.
 ppt-msp-demo/
   api/main.py              # FastAPI
   frontend/                # React + TS (Vite) — единственный UI
-  demo_app.py              # Streamlit-оболочка (iframe React)
+  demo_app.py              # Streamlit-оболочка (React)
+  demo/streamlit_react.py  # React как Streamlit-компонент
+  demo/streamlit_boot.py   # локальный bootstrap dist + uvicorn
+  demo/payloads.py
   demo/form_input.py
   demo/form_pipeline.py
   demo/mode1.py
   demo/mpp_writer.py
   demo/catalog.py
-  demo/streamlit_boot.py
   sample_data/
   tests/
   DEMO_SHOW.md

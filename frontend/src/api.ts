@@ -1,3 +1,9 @@
+import {
+  isStreamlitComponent,
+  setComponentValue,
+  waitForRecalcResponse,
+  waitForStreamlitArgs,
+} from './streamlitBridge'
 import type { FormState, RecalcResult } from './types'
 import type { FormOptions } from './options'
 
@@ -17,12 +23,28 @@ export async function fetchPrefill(): Promise<{
   com_available: boolean
   options: FormOptions
 }> {
+  if (isStreamlitComponent()) {
+    const args = await waitForStreamlitArgs()
+    return args.prefill as {
+      form: FormState
+      months: string[]
+      com_available: boolean
+      options: FormOptions
+    }
+  }
   const res = await fetch('/api/prefill')
   if (!res.ok) throw new Error(await parseError(res))
   return res.json()
 }
 
 export async function postRecalc(form: FormState): Promise<RecalcResult> {
+  if (isStreamlitComponent()) {
+    const id = crypto.randomUUID()
+    setComponentValue({ action: 'recalc', id, form })
+    const args = await waitForRecalcResponse(id)
+    if (args.error) throw new Error(args.error)
+    return args.result as RecalcResult
+  }
   const res = await fetch('/api/recalc', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -34,4 +56,14 @@ export async function postRecalc(form: FormState): Promise<RecalcResult> {
 
 export function downloadUrl(jobId: string, kind: 'mpp' = 'mpp'): string {
   return `/api/jobs/${jobId}/${kind}`
+}
+
+export function mppDownloadHref(result: RecalcResult): string | null {
+  if (result.mpp_b64) {
+    return `data:application/vnd.ms-project;base64,${result.mpp_b64}`
+  }
+  if (result.downloads?.mpp && result.job_id) {
+    return downloadUrl(result.job_id)
+  }
+  return null
 }

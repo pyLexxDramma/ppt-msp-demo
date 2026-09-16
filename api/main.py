@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import sys
-import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -17,18 +16,10 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from demo.form_input import (  # noqa: E402
-    MONTHS_RU,
-    FormState,
-    compute_aggregates,
-    form_ready_for_recalc,
-)
-from demo.form_pipeline import (  # noqa: E402
-    run_form_pipeline,
-    silent_prefill_from_csv,
-)
+from demo.form_input import MONTHS_RU, FormState, form_ready_for_recalc  # noqa: E402
 from demo.catalog import load_form_options  # noqa: E402
 from demo.mpp_writer import project_available  # noqa: E402
+from demo.payloads import agg_dict, build_recalc, prefill_payload  # noqa: E402
 
 app = FastAPI(title="PPT-MSP Construction Volumes API", version="1.0.0")
 
@@ -76,20 +67,6 @@ def _to_state(body: FormIn) -> FormState:
     return FormState.from_dict(body.model_dump())
 
 
-def _agg_dict(state: FormState) -> dict[str, Any]:
-    agg = compute_aggregates(state)
-    return {
-        "plan_total": agg.plan_total,
-        "fact_total": agg.fact_total,
-        "month_cum": agg.month_cum,
-        "done": agg.done,
-        "remaining": agg.remaining,
-        "pct_done": agg.pct_done,
-        "vor": agg.vor,
-        "rows": [{"dev": r.dev, "cum": r.cum} for r in agg.rows],
-    }
-
-
 @app.get("/api/health")
 def health() -> dict[str, Any]:
     return {
@@ -107,22 +84,14 @@ def options() -> dict[str, Any]:
 
 @app.get("/api/prefill")
 def prefill() -> dict[str, Any]:
-    state = silent_prefill_from_csv(FormState())
-    return {
-        "form": state.to_dict(),
-        "aggregates": _agg_dict(state),
-        "ready": form_ready_for_recalc(state),
-        "com_available": project_available(),
-        "months": MONTHS_RU,
-        "options": load_form_options(),
-    }
+    return prefill_payload()
 
 
 @app.post("/api/aggregates")
 def aggregates(body: FormIn) -> dict[str, Any]:
     state = _to_state(body)
     return {
-        "aggregates": _agg_dict(state),
+        "aggregates": agg_dict(state),
         "ready": form_ready_for_recalc(state),
     }
 
@@ -135,44 +104,15 @@ def recalc(body: FormIn) -> dict[str, Any]:
             status_code=400,
             detail="Нужны ВОР > 0 и хотя бы одна неделя с фактом > 0",
         )
-    pipe = run_form_pipeline(state)
-    job_id = str(uuid.uuid4())
-    _JOBS[job_id] = {
-        "csv": pipe.csv_bytes,
-        "xml": pipe.xml_bytes,
-        "mpp": pipe.mpp_bytes,
+    payload, files = build_recalc(state)
+    _JOBS[payload["job_id"]] = {
+        **files,
         "created": datetime.now(timezone.utc).isoformat(),
     }
-    # keep last 20 jobs
     if len(_JOBS) > 20:
         for k in list(_JOBS.keys())[:-20]:
             _JOBS.pop(k, None)
-
-    m1 = pipe.schedule.get("mode1") or {}
-    return {
-        "job_id": job_id,
-        "status": pipe.status,
-        "aggregates": _agg_dict(state),
-        "schedule": pipe.schedule,
-        "mode1": m1,
-        "today": pipe.today.isoformat(),
-        "com_available": pipe.com_available,
-        "mpp_error": (
-            "Расчёт готов. Файл .mpp недоступен на этой машине расчёта "
-            "(нужны MS Project и pywin32)."
-            if pipe.mpp_error and not pipe.mpp_bytes
-            else pipe.mpp_error
-        ),
-        "downloads": {
-            "mpp": pipe.mpp_bytes is not None,
-        },
-        "update": {
-            "task_id": pipe.update.task_id,
-            "name": pipe.update.name,
-            "before": pipe.update.before,
-            "after": pipe.update.after,
-        },
-    }
+    return payload
 
 
 def _job_file(job_id: str, kind: str) -> bytes:

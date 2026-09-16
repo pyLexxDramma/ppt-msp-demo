@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { downloadUrl, fetchPrefill, postRecalc } from './api'
+import { fetchPrefill, mppDownloadHref, postRecalc } from './api'
 import { CustomSelect } from './components/CustomSelect'
 import { FieldLabel } from './components/FieldLabel'
 import { MppFieldsDisclosure } from './components/MppFieldsDisclosure'
@@ -197,6 +197,7 @@ export default function App() {
     null
   const factPeriod = (m1 as { fact_period?: number }).fact_period
   const lastWeek = (m1 as { last_week?: number }).last_week
+  const mppHref = result ? mppDownloadHref(result) : null
 
   return (
     <>
@@ -528,8 +529,8 @@ export default function App() {
                     'Сохранить и пересчитать'
                   )}
                 </button>
-                {result?.downloads.mpp ? (
-                  <a className="btn btn-outline" href={downloadUrl(result.job_id, 'mpp')}>
+                {mppHref ? (
+                  <a className="btn btn-outline" href={mppHref} download="msp_updated.mpp">
                     Скачать .mpp
                   </a>
                 ) : null}
@@ -605,8 +606,8 @@ export default function App() {
               </div>
 
               <div className="result-footer">
-                {result.downloads.mpp ? (
-                  <a className="btn btn-primary" href={downloadUrl(result.job_id, 'mpp')}>
+                {mppHref ? (
+                  <a className="btn btn-primary" href={mppHref} download="msp_updated.mpp">
                     Скачать .mpp
                   </a>
                 ) : (
