@@ -1,2 +1,0 @@
-# Apt-пакеты для Streamlit Community Cloud.
-# Node/npm не ставим: React берётся из закоммиченного frontend/dist.
