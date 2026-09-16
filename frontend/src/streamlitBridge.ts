@@ -44,14 +44,23 @@ function ensureListener(): void {
   post('streamlit:componentReady', { apiVersion: 1 })
   syncHeight()
   window.addEventListener('resize', syncHeight)
-  const ro = new ResizeObserver(syncHeight)
+  const ro = new ResizeObserver(() => syncHeight())
   ro.observe(document.documentElement)
+  const root = document.getElementById('root')
+  if (root) ro.observe(root)
+  // После гидрации React высота растёт асинхронно
+  window.setTimeout(syncHeight, 100)
+  window.setTimeout(syncHeight, 500)
+  window.setTimeout(syncHeight, 1500)
 }
 
 export function syncHeight(): void {
+  const root = document.getElementById('root')
   const height = Math.max(
+    root?.scrollHeight || 0,
     document.documentElement.scrollHeight,
     document.body?.scrollHeight || 0,
+    document.documentElement.offsetHeight,
     window.innerHeight,
     900,
   )

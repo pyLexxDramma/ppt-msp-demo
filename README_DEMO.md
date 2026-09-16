@@ -5,16 +5,14 @@
 
 Веб-форма ввода плана/факта по неделям → расчёт начала/окончания (**Режим №1**) → обновление sample `.mpp` через COM (Windows + MS Project) и скачивание файла для Project.
 
-## Два UI (параллельно)
+## UI
 
-| UI | Назначение |
-|----|------------|
-| **React SPA** `frontend/` | Продуктовый UI (кастомные селекты, тосты, MVP) → деплой на **Vercel** |
-| **Streamlit** `demo_app.py` | Оболочка: **тот же React UI** в iframe (1:1) |
+Единственный UI — **React SPA** (`frontend/`).  
+**Streamlit** (`demo_app.py`) — оболочка: тот же React (компонент из `frontend/dist` или iframe на локальный API). Отдельной Streamlit-формы нет.
 
-Оба ходят в один FastAPI (`api/main.py` + пайплайн `demo/`).
+## Запуск через Streamlit
 
-## Быстрый старт: React + FastAPI
+Нужны Python и (для первой сборки) Node.js/npm. Если `frontend/dist` уже есть — Node не обязателен:
 
 ```bash
 cd ppt-msp-demo
@@ -23,6 +21,19 @@ python -m venv .venv
 # macOS/Linux:
 source .venv/bin/activate
 
+pip install -r requirements-demo.txt
+streamlit run demo_app.py --server.port 8503
+```
+
+Открыть: **http://localhost:8503**
+
+При отсутствии `frontend/dist` Streamlit сам соберёт SPA и при необходимости поднимет uvicorn на `:8000`.
+
+## Запуск React + API отдельно (разработка)
+
+```bash
+cd ppt-msp-demo
+source .venv/bin/activate   # или .venv\Scripts\activate на Windows
 pip install -r requirements-demo.txt
 
 # терминал 1 — API
@@ -35,32 +46,12 @@ npm run dev
 ```
 
 Открыть: **http://localhost:5173**  
-API docs: **http://localhost:8000/docs**
-
+API docs: **http://localhost:8000/docs**  
 Vite проксирует `/api` → `http://127.0.0.1:8000`.
-
-Для продакшен-фронта: сборка `frontend/` на **Vercel**; API (`uvicorn`) — отдельно (для `.mpp` — Windows + Project). В SPA задайте URL API (CORS на бэкенде).
 
 ### Прозрачность расчётов
 
 Под заголовком — раскрывающийся блок (по умолчанию **свёрнут**): что меняется в `.mpp` и свод формул Mode1.
-
-## Streamlit = тот же React UI
-
-Достаточно одного процесса — при старте Streamlit **сам** соберёт `frontend/dist` (если нет) и поднимет uvicorn на `:8000`:
-
-```bash
-cd ppt-msp-demo
-source .venv/bin/activate
-pip install -r requirements-demo.txt
-streamlit run demo_app.py --server.port 8503
-```
-
-Открыть **http://localhost:8503**. Нужны Node.js/npm (для первой сборки SPA).
-
-URL iframe: `PPT_MSP_UI_URL` (по умолчанию `http://127.0.0.1:8000`).
-
-**Streamlit Community Cloud:** нативная форма (тот же Mode1). React-компонент и uvicorn на Cloud не запускаем — из‑за них приложение падает с «Error running app». Пиксельный React — локально или через публичный `PPT_MSP_UI_URL`. `.mpp` на Cloud нет (нужен Windows + MS Project).
 
 ## Sample-данные
 
@@ -98,8 +89,11 @@ URL iframe: `PPT_MSP_UI_URL` (по умолчанию `http://127.0.0.1:8000`).
 ```
 ppt-msp-demo/
   api/main.py              # FastAPI
-  frontend/                # React + TS (Vite)
-  demo_app.py              # Streamlit (демо)
+  frontend/                # React + TS (Vite) — единственный UI
+  demo_app.py              # Streamlit-оболочка (React)
+  demo/streamlit_react.py  # React как Streamlit-компонент
+  demo/streamlit_boot.py   # локальный bootstrap dist + uvicorn
+  demo/payloads.py
   demo/form_input.py
   demo/form_pipeline.py
   demo/mode1.py

@@ -29,6 +29,9 @@ def _prefill() -> dict:
 
 
 def render() -> None:
+    # Не фиксируем iframe на 100vh и не гасим overflow — иначе на Cloud
+    # контент React обрезается и страница не скроллится. Высоту задаёт
+    # streamlitBridge.setFrameHeight → скролл у самой страницы Streamlit.
     st.markdown(
         """
 <style>

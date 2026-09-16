@@ -5,6 +5,7 @@ import { FieldLabel } from './components/FieldLabel'
 import { MppFieldsDisclosure } from './components/MppFieldsDisclosure'
 import { computeAggregates, fmt, periodLabel, signedFmt } from './formLogic'
 import { FIELD_HELP, type FormOptions } from './options'
+import { isStreamlitComponent, syncHeight } from './streamlitBridge'
 import { MONTHS_RU, WEEKS_COUNT, defaultForm, type FormState, type RecalcResult } from './types'
 import { formIsValid, validateForm } from './validation'
 
@@ -47,6 +48,13 @@ export default function App() {
       if (toastTimer.current != null) window.clearTimeout(toastTimer.current)
     }
   }, [])
+
+  useEffect(() => {
+    if (!isStreamlitComponent()) return
+    syncHeight()
+    const t = window.setTimeout(syncHeight, 50)
+    return () => window.clearTimeout(t)
+  }, [loading, result, form, toast])
 
   useEffect(() => {
     let cancelled = false
