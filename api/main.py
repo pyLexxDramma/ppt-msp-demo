@@ -34,6 +34,8 @@ app.add_middleware(
         "http://127.0.0.1:8501",
         "http://localhost:8503",
         "http://127.0.0.1:8503",
+        "https://bi-analytics-msp.vercel.app",
+        "https://ppt-msp-demo-2j2hmuumc5qfyah695rqqd.streamlit.app",
     ],
     allow_credentials=True,
     allow_methods=["*"],

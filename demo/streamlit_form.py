@@ -373,6 +373,12 @@ def render(*, cloud_note: str | None = None) -> None:
                 mime="application/vnd.ms-project",
                 use_container_width=True,
             )
+        elif st.button("Скачать .mpp", use_container_width=True):
+            st.toast(
+                (pipe_prev.mpp_error if pipe_prev is not None else None)
+                or "Файл .mpp собирается только на Windows с MS Project. Запустите «Запуск МПП демо».",
+                icon="⚠️",
+            )
 
     if run:
         if not ready:

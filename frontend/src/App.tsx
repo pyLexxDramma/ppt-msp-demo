@@ -533,7 +533,21 @@ export default function App() {
                   <a className="btn btn-outline" href={mppHref} download="msp_updated.mpp">
                     Скачать .mpp
                   </a>
-                ) : null}
+                ) : (
+                  <button
+                    type="button"
+                    className="btn btn-outline"
+                    onClick={() =>
+                      showToast(
+                        result?.mpp_error ||
+                          'Файл .mpp собирается только на Windows с MS Project. Запустите «Запуск МПП демо».',
+                        'warn',
+                      )
+                    }
+                  >
+                    Скачать .mpp
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -611,9 +625,19 @@ export default function App() {
                     Скачать .mpp
                   </a>
                 ) : (
-                  <p className="result-mpp-note">
-                    Расчёт готов. Файл .mpp недоступен на этой машине расчёта (нужны MS Project и pywin32).
-                  </p>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={() =>
+                      showToast(
+                        result.mpp_error ||
+                          'Файл .mpp собирается только на Windows с MS Project. Запустите «Запуск МПП демо».',
+                        'warn',
+                      )
+                    }
+                  >
+                    Скачать .mpp
+                  </button>
                 )}
               </div>
             </div>

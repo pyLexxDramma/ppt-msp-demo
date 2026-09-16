@@ -86,18 +86,22 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
+# Локальное демо .mpp на Windows (скрипт с рабочего стола)
+if _flag("PPT_MSP_LOCAL_MPP"):
+    from demo.streamlit_form import render as render_form
+
+    render_form()
+    st.stop()
+
 public_ui = _public_ui_url()
 
 if not _is_local_machine():
-    if public_ui:
-        _show_iframe(public_ui)
-    else:
-        try:
-            from demo.streamlit_form import render as render_form
+    try:
+        from demo.streamlit_form import render as render_form
 
-            render_form()
-        except Exception as exc:
-            _show_error(exc)
+        render_form()
+    except Exception as exc:
+        _show_error(exc)
     st.stop()
 
 try:
