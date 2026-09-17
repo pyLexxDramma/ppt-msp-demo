@@ -56,11 +56,18 @@ export default function App() {
   useEffect(() => {
     if (!isStreamlitComponent()) return
     return subscribeArgs((args) => {
-      const upload = (args.prefill as { mpp_upload?: { ready?: boolean; filename?: string | null } } | undefined)
-        ?.mpp_upload
+      const upload = (args.prefill as {
+        mpp_upload?: {
+          ready?: boolean
+          filename?: string | null
+          upload_id?: string | null
+          options?: FormOptions
+        }
+      } | undefined)?.mpp_upload
       if (!upload?.ready) return
       setMppFilename(upload.filename ?? 'source.mpp')
-      setMppUploadId((prev) => prev || 'session')
+      setMppUploadId((prev) => upload.upload_id || prev || 'session')
+      if (upload.options) setOptions(upload.options)
     })
   }, [])
 
@@ -82,7 +89,8 @@ export default function App() {
         if (data.options) setOptions(data.options)
         if (data.mpp_upload?.ready) {
           setMppFilename(data.mpp_upload.filename ?? 'source.mpp')
-          setMppUploadId('session')
+          setMppUploadId(data.mpp_upload.upload_id || 'session')
+          if (data.mpp_upload.options) setOptions(data.mpp_upload.options)
         }
       } catch (e) {
         if (!cancelled) {

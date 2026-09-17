@@ -14,6 +14,15 @@ export type ComponentEvent =
       mpp_b64?: string | null
       mpp_filename?: string | null
     }
+  | {
+      action: 'mpp_chunk'
+      id: string
+      batch: string
+      index: number
+      total: number
+      filename: string
+      data: string
+    }
   | { action: 'mpp_clear'; id: string }
 
 type ArgsListener = (args: StreamlitArgs) => void

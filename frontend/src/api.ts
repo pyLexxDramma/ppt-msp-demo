@@ -1,6 +1,7 @@
 import {
   isStreamlitComponent,
   setComponentValue,
+  waitForComponentAck,
   waitForRecalcResponse,
   waitForStreamlitArgs,
 } from './streamlitBridge'
@@ -26,6 +27,9 @@ export type PrefillResponse = {
   mpp_upload?: {
     ready?: boolean
     filename?: string | null
+    upload_id?: string | null
+    options?: FormOptions
+    warning?: string | null
   }
 }
 
@@ -63,7 +67,7 @@ async function resolveApiBase(): Promise<string> {
           const health = await fetchWithTimeout(
             `${candidate}/api/health`,
             { cache: 'no-store' },
-            4000,
+            12000,
           )
           if (health.ok) {
             cachedBase = candidate
@@ -141,6 +145,53 @@ async function uploadMppHttp(file: File, base: string): Promise<MppUploadResult>
   return res.json()
 }
 
+const STREAMLIT_CHUNK = 256 * 1024
+
+function bytesToBase64(buf: Uint8Array): string {
+  let binary = ''
+  const step = 0x8000
+  for (let i = 0; i < buf.length; i += step) {
+    binary += String.fromCharCode(...buf.subarray(i, i + step))
+  }
+  return btoa(binary)
+}
+
+async function uploadMppViaStreamlit(file: File): Promise<MppUploadResult> {
+  const buf = new Uint8Array(await file.arrayBuffer())
+  const total = Math.max(1, Math.ceil(buf.length / STREAMLIT_CHUNK))
+  const batch = crypto.randomUUID()
+  let last: MppUploadResult | null = null
+  for (let i = 0; i < total; i++) {
+    const slice = buf.subarray(i * STREAMLIT_CHUNK, (i + 1) * STREAMLIT_CHUNK)
+    const id = `${batch}:${i}`
+    setComponentValue({
+      action: 'mpp_chunk',
+      id,
+      batch,
+      index: i,
+      total,
+      filename: file.name,
+      data: bytesToBase64(slice),
+    })
+    const args = await waitForComponentAck(id, 90_000)
+    const upload = (args.prefill as PrefillResponse | undefined)?.mpp_upload
+    if (i === total - 1) {
+      if (!upload?.ready) {
+        throw new Error(args.error || 'Streamlit не собрал файл .mpp')
+      }
+      last = {
+        upload_id: upload.upload_id || 'session',
+        filename: upload.filename || file.name,
+        size: file.size,
+        options: upload.options,
+        warning: upload.warning,
+      }
+    }
+  }
+  if (!last) throw new Error('Не удалось загрузить .mpp через Streamlit')
+  return last
+}
+
 export async function uploadMpp(file: File): Promise<MppUploadResult> {
   if (file.size > MAX_MPP_BYTES) {
     throw new Error(`Файл больше ${MAX_MPP_BYTES / (1024 * 1024)} МБ`)
@@ -152,7 +203,6 @@ export async function uploadMpp(file: File): Promise<MppUploadResult> {
       const info = await uploadMppHttp(file, base)
       streamlitPendingFile = null
       if (!info.options?.tasks?.length) {
-        // Файл на сервере есть; каталог пуст — старый Windows API / нет COM / нет Text13
         const warning =
           info.warning ||
           (info.options == null
@@ -162,26 +212,14 @@ export async function uploadMpp(file: File): Promise<MppUploadResult> {
       }
       return info
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Не удалось загрузить .mpp'
       if (!isStreamlitComponent()) throw e
-      // Сеть/туннель: оставляем файл в браузере для пересчёта
-      streamlitPendingFile = file
-      throw new Error(
-        `${msg} Проверьте Windows-туннель (cloudflared) и что API запущен.`,
-      )
     }
   }
 
   if (isStreamlitComponent()) {
-    // Нет URL Windows API — файл хотя бы выбирается локально
-    streamlitPendingFile = file
-    return {
-      upload_id: 'browser-pending',
-      filename: file.name,
-      size: file.size,
-      warning:
-        'Файл выбран. Для задач/ВОР/накоплено из .mpp нужен живой Windows API (MS Project).',
-    }
+    const info = await uploadMppViaStreamlit(file)
+    streamlitPendingFile = null
+    return info
   }
 
   // Локальный uvicorn (относительный /api)
@@ -224,17 +262,22 @@ export async function postRecalc(
           const up = await uploadMppHttp(pending, base)
           mpp_upload_id = up.upload_id
         } catch {
-          /* ниже — base64 в событии recalc */
+          /* куски через Streamlit → Python → туннель */
         }
       }
       if (!mpp_upload_id) {
-        if (pending.size > STREAMLIT_B64_MAX) {
-          throw new Error(
-            'Файл слишком большой для Streamlit без Windows-туннеля. ' +
-              'Запустите API/tunnel или выберите файл меньше 1.5 МБ.',
-          )
+        try {
+          const up = await uploadMppViaStreamlit(pending)
+          mpp_upload_id = up.upload_id
+          streamlitPendingFile = null
+        } catch {
+          if (pending.size > STREAMLIT_B64_MAX) {
+            throw new Error(
+              'Не удалось отправить .mpp на Windows API. Проверьте туннель и повторите загрузку файла.',
+            )
+          }
+          mpp_b64 = await fileToBase64(pending)
         }
-        mpp_b64 = await fileToBase64(pending)
       }
     }
 
