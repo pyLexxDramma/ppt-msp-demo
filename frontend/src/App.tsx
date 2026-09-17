@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { fetchPrefill, mppDownloadHref, postRecalc } from './api'
+import { clearMppUpload, fetchPrefill, mppDownloadHref, postRecalc, uploadMpp } from './api'
 import { CustomSelect } from './components/CustomSelect'
 import { FieldLabel } from './components/FieldLabel'
 import { MppFieldsDisclosure } from './components/MppFieldsDisclosure'
+import { MppUploadCard } from './components/MppUploadCard'
 import { ScheduleTable } from './components/ScheduleTable'
 import { computeAggregates, fmt, periodLabel, signedFmt } from './formLogic'
 import { FIELD_HELP, type FormOptions } from './options'
-import { isStreamlitComponent, syncHeight } from './streamlitBridge'
+import { isStreamlitComponent, subscribeArgs, syncHeight } from './streamlitBridge'
 import { MONTHS_RU, WEEKS_COUNT, defaultForm, type FormState, type RecalcResult } from './types'
 import { formIsValid, validateForm } from './validation'
 
@@ -27,6 +28,8 @@ export default function App() {
   const [theme, setTheme] = useState<'light' | 'dark'>('light')
   const [toast, setToast] = useState<ToastState | null>(null)
   const [touched, setTouched] = useState(false)
+  const [mppUploadId, setMppUploadId] = useState<string | null>(null)
+  const [mppFilename, setMppFilename] = useState<string | null>(null)
   const toastTimer = useRef<number | null>(null)
 
   useEffect(() => {
@@ -52,10 +55,21 @@ export default function App() {
 
   useEffect(() => {
     if (!isStreamlitComponent()) return
+    return subscribeArgs((args) => {
+      const upload = (args.prefill as { mpp_upload?: { ready?: boolean; filename?: string | null } } | undefined)
+        ?.mpp_upload
+      if (!upload?.ready) return
+      setMppFilename(upload.filename ?? 'source.mpp')
+      setMppUploadId((prev) => prev || 'session')
+    })
+  }, [])
+
+  useEffect(() => {
+    if (!isStreamlitComponent()) return
     syncHeight()
     const t = window.setTimeout(syncHeight, 50)
     return () => window.clearTimeout(t)
-  }, [loading, result, form, toast])
+  }, [loading, result, form, toast, mppFilename, mppUploadId])
 
   useEffect(() => {
     let cancelled = false
@@ -63,17 +77,17 @@ export default function App() {
       try {
         const data = await fetchPrefill()
         if (cancelled) return
-        setForm({
-          ...defaultForm(),
-          ...data.form,
-          weeks: data.form.weeks?.length ? data.form.weeks : defaultForm().weeks,
-        })
+        setForm(defaultForm())
         if (data.months?.length) setMonths(data.months)
         if (data.options) setOptions(data.options)
+        if (data.mpp_upload?.ready) {
+          setMppFilename(data.mpp_upload.filename ?? 'source.mpp')
+          setMppUploadId('session')
+        }
       } catch (e) {
         if (!cancelled) {
           showToast(
-            e instanceof Error ? e.message : 'Не удалось загрузить префилл',
+            e instanceof Error ? e.message : 'Не удалось загрузить справочники',
             'warn',
           )
         }
@@ -85,9 +99,17 @@ export default function App() {
       cancelled = true
     }
   }, [showToast])
+
+  const sourceReady = Boolean(mppUploadId)
+  const formLocked = !sourceReady
+
   const agg = useMemo(() => computeAggregates(form), [form])
-  const errors = useMemo(() => validateForm(form, options), [form, options])
+  const errors = useMemo(
+    () => (formLocked ? {} : validateForm(form, options)),
+    [form, options, formLocked],
+  )
   const valid = formIsValid(errors)
+
 
   const patch = <K extends keyof FormState>(key: K, value: FormState[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }))
@@ -97,12 +119,12 @@ export default function App() {
     setForm((prev) => {
       const weeks = prev.weeks.map((w, i) => {
         if (i !== index) return w
-        if (field === 'fact') {
-          return { ...w, fact: raw === '' ? null : Number(raw) }
+        if (raw === '') {
+          return { ...w, [field]: null }
         }
-        return { ...w, plan: raw === '' ? 0 : Number(raw) }
+        return { ...w, [field]: Number(raw) }
       })
-      while (weeks.length < WEEKS_COUNT) weeks.push({ plan: 0, fact: null })
+      while (weeks.length < WEEKS_COUNT) weeks.push({ plan: null, fact: null })
       return { ...prev, weeks: weeks.slice(0, WEEKS_COUNT) }
     })
   }
@@ -131,18 +153,21 @@ export default function App() {
 
   const onRecalc = async () => {
     setTouched(true)
+    if (formLocked) {
+      showToast('Сначала загрузите исходный .mpp', 'warn')
+      return
+    }
     if (!valid) {
       showToast('Исправьте подсвеченные поля перед пересчётом.', 'warn')
       return
     }
     setBusy(true)
     try {
-      const data = await postRecalc(form)
+      const data = await postRecalc(form, { mppUploadId })
       setResult(data)
       if (data.downloads.mpp) {
         showToast('Пересчёт завершён. Можно скачать .mpp', 'ok')
       }
-      // Без .mpp: результат в панели, красная заметка вместо кнопки — тост не дублируем.
     } catch (e) {
       showToast(e instanceof Error ? e.message : 'Ошибка пересчёта', 'warn')
     } finally {
@@ -230,7 +255,7 @@ export default function App() {
         <div className="container">
           <h1 className="hero-title">Данные по объему стройплощадок</h1>
           <p className="hero-sub">
-            Роль: Инженер · ввод плана/факта по неделям для актуализации MS Project
+            Загрузите исходный .mpp → заполните план/факт сами → пересчитайте → скачайте обновлённый график
           </p>
           <div className="hero-underline" />
         </div>
@@ -239,8 +264,39 @@ export default function App() {
       <main className="main">
         <div className="container">
           <MppFieldsDisclosure />
-          <div className="card form-block">
+          <MppUploadCard
+            filename={mppFilename}
+            busy={busy}
+            uploadFn={uploadMpp}
+            onUploaded={({ uploadId, filename }) => {
+              setMppUploadId(uploadId)
+              setMppFilename(filename)
+              setForm(defaultForm())
+              setTouched(false)
+              setResult(null)
+              showToast(`Файл загружен: ${filename}. Заполните форму.`, 'ok')
+            }}
+            onCleared={() => {
+              void clearMppUpload()
+              setMppUploadId(null)
+              setMppFilename(null)
+              setForm(defaultForm())
+              setTouched(false)
+              setResult(null)
+            }}
+            onError={(message) => showToast(message, 'warn')}
+          />
+          <div className={`card form-block${formLocked ? ' is-locked' : ''}`}>
+            {formLocked ? (
+              <div className="form-lock-banner" role="status">
+                Сначала загрузите исходный .mpp — затем заполните поля вручную (без автоподстановки).
+              </div>
+            ) : null}
+            <fieldset className="form-fieldset" disabled={formLocked}>
             <div className="form-section settings-card">
+              <div className="form-step-head">
+                <p className="card-title">2. Параметры и объёмы</p>
+              </div>
               <div className="settings-fields">
                 <FieldLabel
                   className="wide"
@@ -273,8 +329,9 @@ export default function App() {
                 </FieldLabel>
                 <FieldLabel label="Месяц отчёта" help={FIELD_HELP.period_month} error={showErr('period_month')}>
                   <CustomSelect
-                    value={String(form.period_month)}
+                    value={form.period_month < 0 ? '' : String(form.period_month)}
                     options={monthOpts}
+                    placeholder="Выберите месяц"
                     invalid={Boolean(showErr('period_month'))}
                     onChange={(v) => patch('period_month', Number(v))}
                     aria-label="Месяц отчёта"
@@ -282,8 +339,9 @@ export default function App() {
                 </FieldLabel>
                 <FieldLabel label="Год" help={FIELD_HELP.period_year} error={showErr('period_year')}>
                   <CustomSelect
-                    value={String(form.period_year)}
+                    value={form.period_year ? String(form.period_year) : ''}
                     options={yearOpts}
+                    placeholder="Выберите год"
                     invalid={Boolean(showErr('period_year'))}
                     onChange={(v) => patch('period_year', Number(v))}
                     aria-label="Год"
@@ -521,7 +579,7 @@ export default function App() {
                 <button
                   type="button"
                   className={`btn btn-primary${busy ? ' is-busy' : ''}`}
-                  disabled={busy}
+                  disabled={busy || formLocked}
                   onClick={onRecalc}
                 >
                   {busy ? (
@@ -535,6 +593,7 @@ export default function App() {
                 </button>
               </div>
             </div>
+            </fieldset>
           </div>
 
           {result ? (

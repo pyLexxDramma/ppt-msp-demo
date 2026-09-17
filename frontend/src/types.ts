@@ -90,7 +90,29 @@ export type RecalcResult = {
   schedule_cols?: string[]
 }
 
+export function emptyWeeks(): WeekRow[] {
+  return Array.from({ length: WEEKS_COUNT }, () => ({ plan: null, fact: null }))
+}
+
+/** Пустая форма «как на проде» — без демо-префилла. */
 export function defaultForm(): FormState {
+  return {
+    project: '',
+    project_id: '',
+    period_month: -1,
+    period_year: 0,
+    mode: 'last',
+    task_name: '',
+    task_id: '',
+    vor: 0,
+    unit: '',
+    prev_cumulative: 0,
+    weeks: emptyWeeks(),
+  }
+}
+
+/** Заполненная форма только для unit-тестов фронта. */
+export function sampleFormForTests(): FormState {
   return {
     project: 'ЖК Ленинский',
     project_id: '0feb8a44-a0f4-11ef-af7f-0050560219d5',

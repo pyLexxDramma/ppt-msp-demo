@@ -197,10 +197,11 @@ def run_form_pipeline(
     *,
     csv_path: Path | None = None,
     mpp_path: Path | None = None,
+    mpp_bytes: bytes | None = None,
     write_mpp: bool = True,
     write_csv_xml: bool = True,
 ) -> PipelineResult:
-    """Пересчёт Mode1 + запись sample MPP (если COM) + опционально CSV/XML."""
+    """Пересчёт Mode1 + запись MPP (загруженный или sample) через COM + опционально CSV/XML."""
     csv_p = csv_path or SAMPLE_CSV
     mpp_p = mpp_path or SAMPLE_MPP
 
@@ -229,19 +230,24 @@ def run_form_pipeline(
         xml_bytes = rows_to_mspdi_xml(rows, updates, project_name=state.project or "msp_updated")
 
     com_ok = project_available()
-    mpp_bytes = None
+    out_mpp: bytes | None = None
     mpp_error = None
     if write_mpp:
+        source = mpp_bytes
+        if source is None and mpp_p.exists():
+            source = mpp_p.read_bytes()
         if not com_ok:
             mpp_error = (
                 "Расчёт готов. Файл .mpp недоступен на этой машине расчёта "
                 "(нужны MS Project и pywin32)."
             )
-        elif not mpp_p.exists():
-            mpp_error = f"Не найден sample .mpp: {mpp_p.name}. Положите файл в sample_data/."
+        elif not source:
+            mpp_error = (
+                "Нет исходного .mpp: загрузите файл в форму или положите sample в sample_data/."
+            )
         else:
             try:
-                mpp_bytes = apply_updates_to_mpp(mpp_p.read_bytes(), updates)
+                out_mpp = apply_updates_to_mpp(source, updates)
             except Exception as e:
                 mpp_error = f"Ошибка записи .mpp через COM: {e}"
 
@@ -253,7 +259,7 @@ def run_form_pipeline(
         today=result["today"],
         csv_bytes=csv_bytes,
         xml_bytes=xml_bytes,
-        mpp_bytes=mpp_bytes,
+        mpp_bytes=out_mpp,
         mpp_error=mpp_error,
         com_available=com_ok,
         schedule_before=schedule_before,

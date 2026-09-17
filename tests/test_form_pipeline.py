@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from demo.form_input import FormState, WeekRow
+from demo.form_input import FormState, WeekRow, sample_form_for_tests
 from demo.form_pipeline import run_form_pipeline
 
 
 def test_pipeline_builds_update_and_schedule() -> None:
-    state = FormState()
+    state = sample_form_for_tests()
     pipe = run_form_pipeline(state, write_mpp=True, write_csv_xml=False)
     assert pipe.update.task_id == state.task_id
     assert pipe.update.after.get("ВОР")
@@ -18,7 +18,7 @@ def test_pipeline_builds_update_and_schedule() -> None:
 
 
 def test_pipeline_mpp_unavailable_message_without_com() -> None:
-    state = FormState()
+    state = sample_form_for_tests()
     pipe = run_form_pipeline(state, write_mpp=True, write_csv_xml=False)
     if pipe.com_available and pipe.mpp_bytes:
         # На Windows+Project файл может появиться — это тоже OK
@@ -33,16 +33,15 @@ def test_pipeline_mpp_unavailable_message_without_com() -> None:
 
 def test_pipeline_over_status() -> None:
     # prev_cumulative перезаписывается из эталона (для Id6 = 205)
-    state = FormState(
-        vor=220,
-        weeks=[
-            WeekRow(10, 20),
-            WeekRow(10, None),
-            WeekRow(10, None),
-            WeekRow(10, None),
-            WeekRow(10, None),
-        ],
-    )
+    state = sample_form_for_tests()
+    state.vor = 220
+    state.weeks = [
+        WeekRow(10, 20),
+        WeekRow(10, None),
+        WeekRow(10, None),
+        WeekRow(10, None),
+        WeekRow(10, None),
+    ]
     pipe = run_form_pipeline(state, write_mpp=False, write_csv_xml=False)
     assert pipe.status == "over"
     assert pipe.aggregates.remaining < 0

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 from pathlib import Path
 
 import streamlit as st
@@ -51,7 +52,13 @@ def render() -> None:
         unsafe_allow_html=True,
     )
 
-    prefill = _prefill()
+    prefill = {
+        **_prefill(),
+        "mpp_upload": {
+            "ready": "ppt_source_mpp" in st.session_state,
+            "filename": st.session_state.get("ppt_source_mpp_name"),
+        },
+    }
     result = st.session_state.get("ppt_react_result")
     error = st.session_state.get("ppt_react_error")
     request_id = st.session_state.get("ppt_react_request_id")
@@ -66,9 +73,8 @@ def render() -> None:
 
     if not event or not isinstance(event, dict):
         return
-    if event.get("action") != "recalc":
-        return
 
+    action = event.get("action")
     req_id = event.get("id")
     if not req_id or req_id == st.session_state.get("ppt_react_done_id"):
         return
@@ -76,6 +82,29 @@ def render() -> None:
     st.session_state["ppt_react_done_id"] = req_id
     st.session_state["ppt_react_request_id"] = req_id
     st.session_state["ppt_react_error"] = None
+
+    if action == "mpp_clear":
+        st.session_state.pop("ppt_source_mpp", None)
+        st.session_state.pop("ppt_source_mpp_name", None)
+        st.session_state["ppt_react_result"] = None
+        st.rerun()
+        return
+
+    if action == "mpp_upload":
+        try:
+            raw_b64 = event.get("mpp_b64") or ""
+            if not raw_b64:
+                raise ValueError("Пустой файл .mpp")
+            st.session_state["ppt_source_mpp"] = base64.b64decode(raw_b64)
+            st.session_state["ppt_source_mpp_name"] = str(event.get("filename") or "source.mpp")
+            st.session_state["ppt_react_result"] = None
+        except Exception as exc:
+            st.session_state["ppt_react_error"] = str(exc)
+        st.rerun()
+        return
+
+    if action != "recalc":
+        return
 
     try:
         state = FormState.from_dict(event.get("form") or {})
@@ -87,17 +116,22 @@ def render() -> None:
             windows_api_healthy,
         )
 
+        mpp_bytes = st.session_state.get("ppt_source_mpp")
+        mpp_upload_id = event.get("mpp_upload_id")
         payload = None
         base = resolve_windows_api_url()
-        # Windows-хост — только если жив; иначе локальный расчёт без .mpp
         if base and windows_api_healthy(base):
             try:
-                payload = remote_recalc(state.to_dict())
+                payload = remote_recalc(
+                    state.to_dict(),
+                    mpp_bytes=mpp_bytes,
+                    mpp_upload_id=mpp_upload_id if isinstance(mpp_upload_id, str) else None,
+                )
             except Exception:
                 payload = None
 
         if not payload:
-            payload = recalc_payload(state)
+            payload = recalc_payload(state, mpp_bytes=mpp_bytes)
 
         if not payload.get("downloads", {}).get("mpp"):
             payload["mpp_error"] = payload.get("mpp_error") or (

@@ -5,11 +5,10 @@ type StreamlitArgs = {
   request_id?: string | null
 }
 
-type RecalcEvent = {
-  action: 'recalc'
-  id: string
-  form: unknown
-}
+export type ComponentEvent =
+  | { action: 'recalc'; id: string; form: unknown; mpp_upload_id?: string | null }
+  | { action: 'mpp_upload'; id: string; filename: string; mpp_b64: string }
+  | { action: 'mpp_clear'; id: string }
 
 type ArgsListener = (args: StreamlitArgs) => void
 
@@ -43,7 +42,6 @@ function onMessage(event: MessageEvent): void {
 function measureContentHeight(): number {
   const root = document.getElementById('root')
   if (root) {
-    // offsetHeight = фактическая высота блока с контентом
     return Math.ceil(Math.max(root.scrollHeight, root.offsetHeight, root.getBoundingClientRect().height))
   }
   const body = document.body
@@ -61,7 +59,6 @@ function ensureListener(): void {
   post('streamlit:componentReady', { apiVersion: 1 })
   syncHeight()
   window.addEventListener('resize', () => syncHeight())
-  // toggle на <details> (disclosure) — обязательно, иначе после закрытия высота «залипает»
   document.addEventListener('toggle', () => syncHeight(), true)
   const ro = new ResizeObserver(() => syncHeight())
   ro.observe(document.documentElement)
@@ -75,7 +72,6 @@ function ensureListener(): void {
 export function syncHeight(): void {
   if (!isStreamlitComponent() && !readySent) return
   if (heightTimer != null) window.clearTimeout(heightTimer)
-  // Два кадра: дать details закрыться / layout пересчитаться
   heightTimer = window.setTimeout(() => {
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
@@ -88,7 +84,7 @@ export function syncHeight(): void {
   }, 30)
 }
 
-export function setComponentValue(value: RecalcEvent): void {
+export function setComponentValue(value: ComponentEvent): void {
   post('streamlit:setComponentValue', { value })
 }
 
@@ -133,6 +129,32 @@ export function waitForRecalcResponse(requestId: string, timeoutMs = 30000): Pro
     const off = subscribeArgs((args) => {
       if (args.request_id !== requestId) return
       if (!args.result && !args.error) return
+      window.clearTimeout(timer)
+      off()
+      resolve(args)
+    })
+  })
+}
+
+/** Ждём, пока Streamlit подтвердит сохранение .mpp в session_state. */
+export function waitForMppUploadAck(requestId: string, timeoutMs = 60000): Promise<StreamlitArgs> {
+  return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(() => {
+      off()
+      reject(new Error('Streamlit не принял файл .mpp'))
+    }, timeoutMs)
+    const off = subscribeArgs((args) => {
+      if (args.request_id !== requestId) return
+      if (args.error) {
+        window.clearTimeout(timer)
+        off()
+        reject(new Error(args.error))
+        return
+      }
+      const ready = Boolean(
+        (args.prefill as { mpp_upload?: { ready?: boolean } } | undefined)?.mpp_upload?.ready,
+      )
+      if (!ready) return
       window.clearTimeout(timer)
       off()
       resolve(args)

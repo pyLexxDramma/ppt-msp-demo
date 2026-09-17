@@ -7,7 +7,7 @@ import {
   formulaById,
 } from './calcHelp'
 import { computeAggregates, formReady } from './formLogic'
-import { defaultForm } from './types'
+import { sampleFormForTests } from './types'
 
 describe('calcHelp catalog', () => {
   it('contains all expected formula ids', () => {
@@ -33,11 +33,11 @@ describe('calcHelp catalog', () => {
 })
 
 describe('formLogic aggregates', () => {
-  it('matches Mode1 input volumes for default form', () => {
-    const agg = computeAggregates(defaultForm())
+  it('matches Mode1 input volumes for sample form', () => {
+    const agg = computeAggregates(sampleFormForTests())
     expect(agg.fact_total).toBe(55)
     expect(agg.done).toBe(55)
     expect(agg.remaining).toBe(295)
-    expect(formReady(defaultForm())).toBe(true)
+    expect(formReady(sampleFormForTests())).toBe(true)
   })
 })

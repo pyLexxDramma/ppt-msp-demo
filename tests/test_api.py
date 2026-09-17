@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi.testclient import TestClient
 
 from api.main import app
@@ -46,7 +48,8 @@ def test_prefill() -> None:
     assert r.status_code == 200
     data = r.json()
     assert "form" in data and "options" in data
-    assert data["form"]["task_id"]
+    assert data["form"]["task_id"] == ""
+    assert data.get("require_mpp_upload") is True
 
 
 def test_recalc_400_without_fact() -> None:
@@ -97,3 +100,28 @@ def test_download_mpp_when_available() -> None:
         assert len(r.content) > 0
     else:
         assert r.status_code == 404
+
+
+def test_mpp_upload_and_recalc_accepts_upload_id() -> None:
+    sample = Path(__file__).resolve().parent.parent / "sample_data" / "msp_0feb8a44-a0f4-11ef-af7f-0050560219d5.mpp"
+    if not sample.is_file():
+        # без sample .mpp — хотя бы валидация формата
+        bad = client.post(
+            "/api/mpp/upload",
+            files={"file": ("note.txt", b"not-mpp", "text/plain")},
+        )
+        assert bad.status_code == 400
+        return
+    up = client.post(
+        "/api/mpp/upload",
+        files={"file": ("source.mpp", sample.read_bytes(), "application/octet-stream")},
+    )
+    assert up.status_code == 200
+    upload_id = up.json()["upload_id"]
+    assert upload_id
+    body = _valid_body()
+    body["mpp_upload_id"] = upload_id
+    r = client.post("/api/recalc", json=body)
+    assert r.status_code == 200
+    data = r.json()
+    assert data.get("source_mpp") == "upload"

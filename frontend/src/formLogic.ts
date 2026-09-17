@@ -56,8 +56,10 @@ export function fmt(n: number | null | undefined, digits = 0): string {
 }
 
 export function periodLabel(state: FormState, months: readonly string[]): string {
-  const idx = Math.max(0, Math.min(11, state.period_month))
-  return `${months[idx]} ${state.period_year}`
+  if (state.period_month < 0 || state.period_month > 11 || !state.period_year) {
+    return 'Период не выбран'
+  }
+  return `${months[state.period_month]} ${state.period_year}`
 }
 
 export function signedFmt(n: number | null): { text: string; cls: string } {

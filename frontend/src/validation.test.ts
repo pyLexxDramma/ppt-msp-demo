@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { FormOptions } from './options'
-import { defaultForm } from './types'
+import { sampleFormForTests } from './types'
 import { formIsValid, validateForm } from './validation'
 
 const options: FormOptions = {
@@ -22,13 +22,13 @@ const options: FormOptions = {
 }
 
 describe('validateForm', () => {
-  it('принимает корректный префилл', () => {
-    const err = validateForm(defaultForm(), options)
+  it('принимает корректно заполненную форму', () => {
+    const err = validateForm(sampleFormForTests(), options)
     expect(formIsValid(err)).toBe(true)
   })
 
   it('требует объект и задачу из справочника', () => {
-    const form = defaultForm()
+    const form = sampleFormForTests()
     form.project = 'Чужой объект'
     form.project_id = 'unknown'
     form.task_name = 'Нет такой'
@@ -41,14 +41,14 @@ describe('validateForm', () => {
   })
 
   it('год только из списка', () => {
-    const form = defaultForm()
+    const form = sampleFormForTests()
     form.period_year = 1999
     const err = validateForm(form, options)
     expect(err.period_year).toBeTruthy()
   })
 
   it('ВОР > 0 и хотя бы один факт > 0', () => {
-    const form = defaultForm()
+    const form = sampleFormForTests()
     form.vor = 0
     form.weeks = form.weeks.map((w) => ({ ...w, fact: null }))
     const err = validateForm(form, options)
@@ -57,7 +57,7 @@ describe('validateForm', () => {
   })
 
   it('ед.изм. из справочника', () => {
-    const form = defaultForm()
+    const form = sampleFormForTests()
     form.unit = 'кг'
     const err = validateForm(form, options)
     expect(err.unit).toBeTruthy()

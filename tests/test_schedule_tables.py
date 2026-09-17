@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from demo.build_update import TaskUpdate
-from demo.form_input import FormState
+from demo.form_input import FormState, sample_form_for_tests
 from demo.form_pipeline import run_form_pipeline
 from demo.schedule_tables import build_schedule_after, build_schedule_before
 
@@ -60,16 +60,18 @@ def test_schedule_tables_mark_changed_task() -> None:
 
 
 def test_pipeline_includes_schedule_tables() -> None:
-    pipe = run_form_pipeline(FormState(), write_mpp=False, write_csv_xml=False)
+    state = sample_form_for_tests()
+    pipe = run_form_pipeline(state, write_mpp=False, write_csv_xml=False)
     assert pipe.schedule_before
     assert pipe.schedule_after
-    hit = next(r for r in pipe.schedule_after if r["Ид"] == FormState().task_id)
+    hit = next(r for r in pipe.schedule_after if r["Ид"] == state.task_id)
     assert hit["Изменено"]
 
 
 def test_pipeline_overrides_prev_cumulative_from_etalon() -> None:
     """Ручной prev_cumulative из формы игнорируется — берём ВОР_факт эталона."""
-    state = FormState(prev_cumulative=999)
+    state = sample_form_for_tests()
+    state.prev_cumulative = 999
     pipe = run_form_pipeline(state, write_mpp=False, write_csv_xml=False)
     # В sample (прокси .mpp) для Id6 ВОР_факт = 205
     assert state.prev_cumulative == 205

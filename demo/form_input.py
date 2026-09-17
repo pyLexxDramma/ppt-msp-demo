@@ -29,33 +29,27 @@ MONTHS_RU = [
 
 @dataclass
 class WeekRow:
-    plan: float | None = 0.0
+    plan: float | None = None
     fact: float | None = None
 
 
 @dataclass
 class FormState:
-    project: str = "ЖК Ленинский"
-    project_id: str = "0feb8a44-a0f4-11ef-af7f-0050560219d5"
-    period_month: int = 6  # 0-based like mockup (июнь)
-    period_year: int = 2026
+    project: str = ""
+    project_id: str = ""
+    period_month: int = -1  # -1 = не выбран
+    period_year: int = 0
     mode: str = "last"
-    task_name: str = "Фундаменты сборные"
-    task_id: str = "6"
-    vor: float = 350.0
-    unit: str = "шт"
+    task_name: str = ""
+    task_id: str = ""
+    vor: float = 0.0
+    unit: str = ""
     prev_cumulative: float = 0.0
     weeks: list[WeekRow] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         if not self.weeks:
-            self.weeks = [
-                WeekRow(plan=20, fact=10),
-                WeekRow(plan=20, fact=30),
-                WeekRow(plan=20, fact=0),
-                WeekRow(plan=20, fact=15),
-                WeekRow(plan=20, fact=None),
-            ]
+            self.weeks = [WeekRow() for _ in range(WEEKS_COUNT)]
         while len(self.weeks) < WEEKS_COUNT:
             self.weeks.append(WeekRow())
         self.weeks = self.weeks[:WEEKS_COUNT]
@@ -68,16 +62,16 @@ class FormState:
         weeks_raw = raw.get("weeks") or []
         weeks = [
             WeekRow(
-                plan=_opt_float(w.get("plan"), 0.0),
+                plan=_opt_float(w.get("plan"), none_ok=True),
                 fact=_opt_float(w.get("fact"), none_ok=True),
             )
             for w in weeks_raw
         ]
         return cls(
-            project=str(raw.get("project") or "ЖК Ленинский"),
+            project=str(raw.get("project") or ""),
             project_id=str(raw.get("project_id") or ""),
-            period_month=int(raw.get("period_month", 6)),
-            period_year=int(raw.get("period_year", 2026)),
+            period_month=int(raw.get("period_month") if raw.get("period_month") is not None else -1),
+            period_year=int(raw.get("period_year") or 0),
             mode=str(raw.get("mode") or "last"),
             task_name=str(raw.get("task_name") or ""),
             task_id=str(raw.get("task_id") or ""),
@@ -86,6 +80,34 @@ class FormState:
             prev_cumulative=float(raw.get("prev_cumulative") or 0),
             weeks=weeks,
         )
+
+
+def empty_form() -> FormState:
+    """Пустая форма «как на проде» — без демо-префилла."""
+    return FormState()
+
+
+def sample_form_for_tests() -> FormState:
+    """Демо-значения только для автотестов Mode1."""
+    return FormState(
+        project="ЖК Ленинский",
+        project_id="0feb8a44-a0f4-11ef-af7f-0050560219d5",
+        period_month=6,
+        period_year=2026,
+        mode="last",
+        task_name="Фундаменты сборные",
+        task_id="6",
+        vor=350.0,
+        unit="шт",
+        prev_cumulative=0.0,
+        weeks=[
+            WeekRow(20, 10),
+            WeekRow(20, 30),
+            WeekRow(20, 0),
+            WeekRow(20, 15),
+            WeekRow(20, None),
+        ],
+    )
 
 
 @dataclass
@@ -179,7 +201,11 @@ def weeks_plan_list(state: FormState) -> list[float | None]:
 
 
 def form_ready_for_recalc(state: FormState) -> bool:
-    """Лёгкий гейт: ВОР > 0 и хотя бы один факт > 0."""
+    """Гейт: период, ВОР > 0 и хотя бы один факт > 0."""
+    if int(state.period_month) < 0 or int(state.period_month) > 11:
+        return False
+    if int(state.period_year) < 2000:
+        return False
     if float(state.vor or 0) <= 0:
         return False
     for w in state.weeks:

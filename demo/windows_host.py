@@ -82,13 +82,29 @@ def windows_api_healthy(base: str | None = None, timeout: float = 4.0) -> bool:
         return False
 
 
-def remote_recalc(state_dict: dict[str, Any], timeout: float = 180.0) -> dict[str, Any] | None:
+def remote_recalc(
+    state_dict: dict[str, Any],
+    *,
+    mpp_bytes: bytes | None = None,
+    mpp_upload_id: str | None = None,
+    timeout: float = 180.0,
+) -> dict[str, Any] | None:
     base = resolve_windows_api_url()
     if not base:
         return None
     try:
         with httpx.Client(timeout=timeout) as client:
-            resp = client.post(f"{base}/api/recalc", json=state_dict)
+            body = dict(state_dict)
+            if mpp_upload_id:
+                body["mpp_upload_id"] = mpp_upload_id
+            elif mpp_bytes:
+                up = client.post(
+                    f"{base}/api/mpp/upload",
+                    files={"file": ("source.mpp", mpp_bytes, "application/octet-stream")},
+                )
+                up.raise_for_status()
+                body["mpp_upload_id"] = up.json()["upload_id"]
+            resp = client.post(f"{base}/api/recalc", json=body)
             resp.raise_for_status()
             data = resp.json()
             job_id = data.get("job_id")

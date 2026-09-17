@@ -20,6 +20,8 @@ def test_cumulative_skips_weeks_without_fact() -> None:
     state = FormState(
         vor=350,
         prev_cumulative=0,
+        period_month=6,
+        period_year=2026,
         weeks=_weeks(10, None, 0, 15, None),
     )
     agg = compute_aggregates(state)
@@ -32,7 +34,13 @@ def test_cumulative_skips_weeks_without_fact() -> None:
 
 
 def test_mode1_no_positive_fact() -> None:
-    state = FormState(vor=100, prev_cumulative=0, weeks=_weeks(None, 0, None, None, None))
+    state = FormState(
+        vor=100,
+        prev_cumulative=0,
+        period_month=6,
+        period_year=2026,
+        weeks=_weeks(None, 0, None, None, None),
+    )
     assert form_ready_for_recalc(state) is False
     out = run_mode1_for_form(state)
     m1 = out["schedule"]["mode1"]
@@ -44,6 +52,8 @@ def test_mode1_remaining_zero_completed() -> None:
     state = FormState(
         vor=100,
         prev_cumulative=80,
+        period_month=6,
+        period_year=2026,
         weeks=_weeks(20, None, None, None, None),
     )
     agg = compute_aggregates(state)
@@ -60,6 +70,8 @@ def test_status_over_when_done_exceeds_vor() -> None:
     state = FormState(
         vor=100,
         prev_cumulative=90,
+        period_month=6,
+        period_year=2026,
         weeks=_weeks(20, None, None, None, None),
     )
     agg = compute_aggregates(state)

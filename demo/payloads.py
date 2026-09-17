@@ -12,7 +12,7 @@ from demo.form_input import (
     compute_aggregates,
     form_ready_for_recalc,
 )
-from demo.form_pipeline import run_form_pipeline, silent_prefill_from_csv
+from demo.form_pipeline import run_form_pipeline
 from demo.mpp_writer import project_available
 from demo.schedule_tables import SCHEDULE_COLS
 
@@ -32,23 +32,30 @@ def agg_dict(state: FormState) -> dict[str, Any]:
 
 
 def prefill_payload() -> dict[str, Any]:
-    state = silent_prefill_from_csv(FormState())
+    """Пустая форма + справочники. Без автоподстановки демо-данных."""
+    from demo.form_input import empty_form
+
+    state = empty_form()
     return {
         "form": state.to_dict(),
         "aggregates": agg_dict(state),
-        "ready": form_ready_for_recalc(state),
+        "ready": False,
         "com_available": project_available(),
         "months": MONTHS_RU,
         "options": load_form_options(),
+        "require_mpp_upload": True,
     }
 
 
 def build_recalc(
-    state: FormState, *, write_mpp: bool | None = None
+    state: FormState,
+    *,
+    write_mpp: bool | None = None,
+    mpp_bytes: bytes | None = None,
 ) -> tuple[dict[str, Any], dict[str, bytes | None]]:
     if write_mpp is None:
         write_mpp = project_available()
-    pipe = run_form_pipeline(state, write_mpp=write_mpp)
+    pipe = run_form_pipeline(state, write_mpp=write_mpp, mpp_bytes=mpp_bytes)
     job_id = str(uuid.uuid4())
     m1 = pipe.schedule.get("mode1") or {}
     mpp_error = pipe.mpp_error
@@ -78,11 +85,17 @@ def build_recalc(
         "schedule_before": pipe.schedule_before or [],
         "schedule_after": pipe.schedule_after or [],
         "schedule_cols": list(SCHEDULE_COLS),
+        "source_mpp": "upload" if mpp_bytes else "sample",
     }
     files = {"csv": pipe.csv_bytes, "xml": pipe.xml_bytes, "mpp": pipe.mpp_bytes}
     return payload, files
 
 
-def recalc_payload(state: FormState, *, write_mpp: bool | None = None) -> dict[str, Any]:
-    payload, _ = build_recalc(state, write_mpp=write_mpp)
+def recalc_payload(
+    state: FormState,
+    *,
+    write_mpp: bool | None = None,
+    mpp_bytes: bytes | None = None,
+) -> dict[str, Any]:
+    payload, _ = build_recalc(state, write_mpp=write_mpp, mpp_bytes=mpp_bytes)
     return payload

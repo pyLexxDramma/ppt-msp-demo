@@ -29,11 +29,11 @@ export function validateForm(form: FormState, options: FormOptions | null): Fiel
   }
 
   if (form.period_month < 0 || form.period_month > 11) {
-    err.period_month = 'Месяц: значение из списка'
+    err.period_month = 'Выберите месяц отчёта'
   }
 
-  if (!years.includes(form.period_year)) {
-    err.period_year = 'Год: выберите из списка'
+  if (!form.period_year || (years.length && !years.includes(form.period_year))) {
+    err.period_year = 'Выберите год'
   }
 
   if (!form.task_name.trim()) {

@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import sys
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
@@ -45,6 +46,9 @@ app.add_middleware(
 
 # job_id -> {csv, xml, mpp, created}
 _JOBS: dict[str, dict[str, Any]] = {}
+# upload_id -> raw .mpp bytes (временное хранилище для демо)
+_UPLOADS: dict[str, bytes] = {}
+_MAX_MPP_BYTES = 40 * 1024 * 1024
 
 
 class WeekIn(BaseModel):
@@ -64,10 +68,32 @@ class FormIn(BaseModel):
     unit: str = ""
     prev_cumulative: float = 0
     weeks: list[WeekIn] = Field(default_factory=list)
+    mpp_upload_id: str | None = None
 
 
 def _to_state(body: FormIn) -> FormState:
-    return FormState.from_dict(body.model_dump())
+    data = body.model_dump()
+    data.pop("mpp_upload_id", None)
+    return FormState.from_dict(data)
+
+
+def _resolve_mpp_bytes(upload_id: str | None) -> bytes | None:
+    if not upload_id:
+        return None
+    data = _UPLOADS.get(upload_id)
+    if data is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Исходный .mpp не найден — загрузите файл снова",
+        )
+    return data
+
+
+def _prune_uploads(keep: int = 10) -> None:
+    if len(_UPLOADS) <= keep:
+        return
+    for key in list(_UPLOADS.keys())[:-keep]:
+        _UPLOADS.pop(key, None)
 
 
 @app.get("/api/health")
@@ -90,6 +116,27 @@ def prefill() -> dict[str, Any]:
     return prefill_payload()
 
 
+@app.post("/api/mpp/upload")
+async def upload_mpp(file: UploadFile = File(...)) -> dict[str, Any]:
+    """Временная загрузка исходного .mpp для последующего /api/recalc."""
+    name = (file.filename or "").strip()
+    if not name.lower().endswith(".mpp"):
+        raise HTTPException(status_code=400, detail="Нужен файл с расширением .mpp")
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Пустой файл")
+    if len(data) > _MAX_MPP_BYTES:
+        raise HTTPException(status_code=400, detail="Файл .mpp слишком большой (лимит 40 МБ)")
+    upload_id = str(uuid.uuid4())
+    _UPLOADS[upload_id] = data
+    _prune_uploads()
+    return {
+        "upload_id": upload_id,
+        "filename": name,
+        "size": len(data),
+    }
+
+
 @app.post("/api/aggregates")
 def aggregates(body: FormIn) -> dict[str, Any]:
     state = _to_state(body)
@@ -107,7 +154,8 @@ def recalc(body: FormIn) -> dict[str, Any]:
             status_code=400,
             detail="Нужны ВОР > 0 и хотя бы одна неделя с фактом > 0",
         )
-    payload, files = build_recalc(state)
+    mpp_bytes = _resolve_mpp_bytes(body.mpp_upload_id)
+    payload, files = build_recalc(state, mpp_bytes=mpp_bytes)
     _JOBS[payload["job_id"]] = {
         **files,
         "created": datetime.now(timezone.utc).isoformat(),
