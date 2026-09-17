@@ -146,36 +146,55 @@ export async function uploadMpp(file: File): Promise<MppUploadResult> {
     throw new Error(`Файл больше ${MAX_MPP_BYTES / (1024 * 1024)} МБ`)
   }
 
-  // Справочник задач читается из .mpp на Windows API (COM)
   const base = await resolveApiBase()
   if (base) {
     try {
       const info = await uploadMppHttp(file, base)
       streamlitPendingFile = null
       if (!info.options?.tasks?.length) {
-        throw new Error(
+        // Файл на сервере есть; каталог пуст — старый Windows API / нет COM / нет Text13
+        const warning =
           info.warning ||
-            'В .mpp нет задач с ВОР — нужен Windows API с MS Project для чтения файла',
-        )
+          (info.options == null
+            ? 'Файл принят, но Windows API не отдал задачи из .mpp. Обновите ppt-msp-demo на хосте с MS Project и перезапустите API.'
+            : 'Файл принят, но в .mpp нет leaf-задач с ВОР (поле Text13).')
+        return { ...info, warning }
       }
       return info
     } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Не удалось загрузить .mpp'
       if (!isStreamlitComponent()) throw e
-      // Streamlit: без туннеля нельзя прочитать каталог из .mpp
-      throw e instanceof Error
-        ? e
-        : new Error('Не удалось загрузить .mpp через Windows API')
+      // Сеть/туннель: оставляем файл в браузере для пересчёта
+      streamlitPendingFile = file
+      throw new Error(
+        `${msg} Проверьте Windows-туннель (cloudflared) и что API запущен.`,
+      )
     }
   }
 
   if (isStreamlitComponent()) {
-    throw new Error(
-      'Нужен живой Windows API (MS Project) для чтения задач из .mpp. CSV больше не используется.',
-    )
+    // Нет URL Windows API — файл хотя бы выбирается локально
+    streamlitPendingFile = file
+    return {
+      upload_id: 'browser-pending',
+      filename: file.name,
+      size: file.size,
+      warning:
+        'Файл выбран. Для задач/ВОР/накоплено из .mpp нужен живой Windows API (MS Project).',
+    }
   }
 
-  // Локальный uvicorn без absolute base
-  return uploadMppHttp(file, '')
+  // Локальный uvicorn (относительный /api)
+  const info = await uploadMppHttp(file, '')
+  if (!info.options?.tasks?.length) {
+    return {
+      ...info,
+      warning:
+        info.warning ||
+        'Файл принят, но задачи из .mpp не прочитаны (нужны MS Project + pywin32 на этом хосте).',
+    }
+  }
+  return info
 }
 
 export async function clearMppUpload(): Promise<void> {
