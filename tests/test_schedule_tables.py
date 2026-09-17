@@ -60,19 +60,45 @@ def test_schedule_tables_mark_changed_task() -> None:
 
 
 def test_pipeline_includes_schedule_tables() -> None:
+    """Без COM/.mpp таблицы эталона пустые; с etalon_rows — заполняются."""
     state = sample_form_for_tests()
-    pipe = run_form_pipeline(state, write_mpp=False, write_csv_xml=False)
+    rows = [
+        {
+            "Ид": "6",
+            "Название": "Фундаменты сборные",
+            "Начало": "01.06.26",
+            "Окончание": "15.06.26",
+            "ВОР": "350",
+            "ВОР_факт": "205",
+            "ВОР_остаток": "145",
+            "Ед_изм": "шт",
+            "%_выполнения_ВОР": "59",
+            "Осталось_дней_прогноз": "",
+            "Заметки": "",
+            "БЛОК": "Задача",
+        }
+    ]
+    pipe = run_form_pipeline(state, write_mpp=False, write_csv_xml=False, etalon_rows=rows)
     assert pipe.schedule_before
     assert pipe.schedule_after
     hit = next(r for r in pipe.schedule_after if r["Ид"] == state.task_id)
     assert hit["Изменено"]
 
 
-def test_pipeline_overrides_prev_cumulative_from_etalon() -> None:
-    """Ручной prev_cumulative из формы игнорируется — берём ВОР_факт эталона."""
+def test_pipeline_overrides_prev_cumulative_from_mpp_rows() -> None:
+    """Ручной prev_cumulative игнорируется — берём ВОР_факт из строк .mpp."""
     state = sample_form_for_tests()
     state.prev_cumulative = 999
-    pipe = run_form_pipeline(state, write_mpp=False, write_csv_xml=False)
-    # В sample (прокси .mpp) для Id6 ВОР_факт = 205
+    rows = [
+        {
+            "Ид": "6",
+            "Название": "Фундаменты сборные",
+            "ВОР": "350",
+            "ВОР_факт": "205",
+            "Ед_изм": "шт",
+            "БЛОК": "Задача",
+        }
+    ]
+    pipe = run_form_pipeline(state, write_mpp=False, write_csv_xml=False, etalon_rows=rows)
     assert state.prev_cumulative == 205
     assert pipe.aggregates.done == 205 + pipe.aggregates.fact_total

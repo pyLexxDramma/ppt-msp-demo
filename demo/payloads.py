@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from demo.catalog import load_form_options
+from demo.catalog import empty_form_options
 from demo.form_input import (
     MONTHS_RU,
     FormState,
@@ -32,7 +32,7 @@ def agg_dict(state: FormState) -> dict[str, Any]:
 
 
 def prefill_payload() -> dict[str, Any]:
-    """Пустая форма + справочники. Без автоподстановки демо-данных."""
+    """Пустая форма. Справочник задач появится после загрузки .mpp."""
     from demo.form_input import empty_form
 
     state = empty_form()
@@ -42,7 +42,7 @@ def prefill_payload() -> dict[str, Any]:
         "ready": False,
         "com_available": project_available(),
         "months": MONTHS_RU,
-        "options": load_form_options(),
+        "options": empty_form_options(),
         "require_mpp_upload": True,
     }
 
@@ -52,10 +52,17 @@ def build_recalc(
     *,
     write_mpp: bool | None = None,
     mpp_bytes: bytes | None = None,
+    etalon_rows: list[dict[str, str]] | None = None,
 ) -> tuple[dict[str, Any], dict[str, bytes | None]]:
     if write_mpp is None:
         write_mpp = project_available()
-    pipe = run_form_pipeline(state, write_mpp=write_mpp, mpp_bytes=mpp_bytes)
+    pipe = run_form_pipeline(
+        state,
+        write_mpp=write_mpp,
+        mpp_bytes=mpp_bytes,
+        etalon_rows=etalon_rows,
+        write_csv_xml=False,
+    )
     job_id = str(uuid.uuid4())
     m1 = pipe.schedule.get("mode1") or {}
     mpp_error = pipe.mpp_error
@@ -74,7 +81,6 @@ def build_recalc(
         "com_available": pipe.com_available,
         "mpp_error": mpp_error,
         "downloads": {"mpp": pipe.mpp_bytes is not None},
-        # Не кладём .mpp в JSON: 7+ МБ через туннель роняют Cloudflare (530).
         "mpp_b64": None,
         "update": {
             "task_id": pipe.update.task_id,
@@ -96,6 +102,12 @@ def recalc_payload(
     *,
     write_mpp: bool | None = None,
     mpp_bytes: bytes | None = None,
+    etalon_rows: list[dict[str, str]] | None = None,
 ) -> dict[str, Any]:
-    payload, _ = build_recalc(state, write_mpp=write_mpp, mpp_bytes=mpp_bytes)
+    payload, _ = build_recalc(
+        state,
+        write_mpp=write_mpp,
+        mpp_bytes=mpp_bytes,
+        etalon_rows=etalon_rows,
+    )
     return payload

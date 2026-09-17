@@ -32,9 +32,9 @@ def test_pipeline_mpp_unavailable_message_without_com() -> None:
 
 
 def test_pipeline_over_status() -> None:
-    # prev_cumulative перезаписывается из эталона (для Id6 = 205)
     state = sample_form_for_tests()
-    state.vor = 220
+    state.vor = 30
+    state.prev_cumulative = 20
     state.weeks = [
         WeekRow(10, 20),
         WeekRow(10, None),

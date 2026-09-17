@@ -1,4 +1,4 @@
-"""Пайплайн: форма → TaskUpdate → sample MPP (COM) + опционально CSV/XML."""
+"""Пайплайн: форма → TaskUpdate → .mpp (COM). CSV не источник эталона."""
 
 from __future__ import annotations
 
@@ -7,15 +7,14 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
-from .build_update import TaskUpdate, apply_updates_to_csv, load_msp_csv
+from .build_update import TaskUpdate, apply_updates_to_csv
 from .form_input import FormAggregates, FormState, run_mode1_for_form, status_for_aggregates
-from .mpp_writer import apply_updates_to_mpp, project_available
+from .mpp_writer import apply_updates_to_mpp, dump_mpp_rows, project_available
 from .schedule_tables import build_schedule_after, build_schedule_before
 from .xml_export import rows_to_mspdi_xml
 
 ROOT = Path(__file__).resolve().parent.parent
 SAMPLE_DIR = ROOT / "sample_data"
-SAMPLE_CSV = SAMPLE_DIR / "msp_demo.csv"
 SAMPLE_MPP = SAMPLE_DIR / "msp_0feb8a44-a0f4-11ef-af7f-0050560219d5.mpp"
 DEFAULT_TASK_ID = "6"
 
@@ -44,7 +43,7 @@ def _pct_int(v: float | int | None) -> str:
         return ""
 
 
-def find_csv_row_by_id(rows: list[dict[str, str]], task_id: str) -> dict[str, str] | None:
+def find_row_by_id(rows: list[dict[str, str]], task_id: str) -> dict[str, str] | None:
     tid = str(task_id).strip()
     for row in rows:
         if str(row.get("Ид") or "").strip() == tid:
@@ -52,8 +51,12 @@ def find_csv_row_by_id(rows: list[dict[str, str]], task_id: str) -> dict[str, st
     return None
 
 
+# совместимость со старыми импортами
+find_csv_row_by_id = find_row_by_id
+
+
 def prev_cumulative_from_row(row: dict[str, str] | None) -> float | None:
-    """Накоплено до периода = ВОР_факт из эталона (пусто → 0)."""
+    """Накоплено до периода = ВОР_факт из эталона .mpp (пусто → 0)."""
     if row is None:
         return None
     raw = str(row.get("ВОР_факт") or "").strip()
@@ -63,49 +66,6 @@ def prev_cumulative_from_row(row: dict[str, str] | None) -> float | None:
         return float(raw.replace(" ", "").replace(",", "."))
     except ValueError:
         return None
-
-
-def silent_prefill_from_csv(
-    state: FormState | None = None,
-    *,
-    csv_path: Path | None = None,
-    task_id: str = DEFAULT_TASK_ID,
-) -> FormState:
-    """Префилл названия/ВОР/ед.изм./накоплено из sample CSV (прокси MPP)."""
-    base = state or FormState()
-    path = csv_path or SAMPLE_CSV
-    if not path.exists():
-        base.task_id = task_id
-        return base
-    try:
-        _, rows = load_msp_csv(path)
-    except Exception:
-        base.task_id = task_id
-        return base
-    row = find_csv_row_by_id(rows, task_id)
-    if not row:
-        base.task_id = task_id
-        return base
-    base.task_id = task_id
-    name = (row.get("Название") or "").strip()
-    if name:
-        base.task_name = name
-    try:
-        vor = float(str(row.get("ВОР") or "0").replace(" ", "").replace(",", "."))
-        if vor > 0:
-            base.vor = vor
-    except ValueError:
-        pass
-    unit = (row.get("Ед_изм") or "").strip()
-    if unit:
-        base.unit = unit
-    pid = (row.get("ID_проекта") or "").strip()
-    if pid:
-        base.project_id = pid
-    pc = prev_cumulative_from_row(row)
-    if pc is not None:
-        base.prev_cumulative = pc
-    return base
 
 
 def build_task_update(
@@ -195,27 +155,34 @@ class PipelineResult:
 def run_form_pipeline(
     state: FormState,
     *,
-    csv_path: Path | None = None,
     mpp_path: Path | None = None,
     mpp_bytes: bytes | None = None,
     write_mpp: bool = True,
-    write_csv_xml: bool = True,
+    write_csv_xml: bool = False,
+    etalon_rows: list[dict[str, str]] | None = None,
 ) -> PipelineResult:
-    """Пересчёт Mode1 + запись MPP (загруженный или sample) через COM + опционально CSV/XML."""
-    csv_p = csv_path or SAMPLE_CSV
+    """Пересчёт Mode1 + запись MPP. Эталон задач — из .mpp (COM dump), не из CSV."""
     mpp_p = mpp_path or SAMPLE_MPP
+    source = mpp_bytes
+    if source is None and mpp_p.exists():
+        source = mpp_p.read_bytes()
 
     before_row: dict[str, str] | None = None
-    fieldnames: list[str] = []
-    rows: list[dict[str, str]] = []
-    if csv_p.exists():
-        fieldnames, rows = load_msp_csv(csv_p)
-        before_row = find_csv_row_by_id(rows, state.task_id)
+    rows: list[dict[str, str]] = list(etalon_rows or [])
+    read_error: str | None = None
 
-    # Накоплено до периода всегда из эталона, не из ручного ввода формы
-    pc = prev_cumulative_from_row(before_row) if before_row is not None else None
-    if pc is not None:
-        state.prev_cumulative = pc
+    if not rows and source and project_available():
+        try:
+            _pname, rows = dump_mpp_rows(source)
+        except Exception as e:
+            read_error = f"Не удалось прочитать эталон из .mpp: {e}"
+            rows = []
+
+    if rows:
+        before_row = find_row_by_id(rows, state.task_id)
+        pc = prev_cumulative_from_row(before_row) if before_row is not None else None
+        if pc is not None:
+            state.prev_cumulative = pc
 
     update, agg, result = build_task_update(state, before_row=before_row)
     updates = [update]
@@ -225,26 +192,22 @@ def run_form_pipeline(
 
     csv_bytes = None
     xml_bytes = None
-    if write_csv_xml and rows and fieldnames:
+    if write_csv_xml and rows:
+        fieldnames = list(rows[0].keys())
         csv_bytes = apply_updates_to_csv(fieldnames, rows, updates)
         xml_bytes = rows_to_mspdi_xml(rows, updates, project_name=state.project or "msp_updated")
 
     com_ok = project_available()
     out_mpp: bytes | None = None
-    mpp_error = None
+    mpp_error = read_error
     if write_mpp:
-        source = mpp_bytes
-        if source is None and mpp_p.exists():
-            source = mpp_p.read_bytes()
         if not com_ok:
-            mpp_error = (
+            mpp_error = mpp_error or (
                 "Расчёт готов. Файл .mpp недоступен на этой машине расчёта "
                 "(нужны MS Project и pywin32)."
             )
         elif not source:
-            mpp_error = (
-                "Нет исходного .mpp: загрузите файл в форму или положите sample в sample_data/."
-            )
+            mpp_error = mpp_error or "Нет исходного .mpp: загрузите файл в форму."
         else:
             try:
                 out_mpp = apply_updates_to_mpp(source, updates)

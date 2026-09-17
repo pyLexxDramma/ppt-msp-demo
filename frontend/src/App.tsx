@@ -268,13 +268,15 @@ export default function App() {
             filename={mppFilename}
             busy={busy}
             uploadFn={uploadMpp}
-            onUploaded={({ uploadId, filename }) => {
+            onUploaded={({ uploadId, filename, options, warning }) => {
               setMppUploadId(uploadId)
               setMppFilename(filename)
+              if (options) setOptions(options)
               setForm(defaultForm())
               setTouched(false)
               setResult(null)
-              showToast(`Файл загружен: ${filename}. Заполните форму.`, 'ok')
+              if (warning) showToast(warning, 'warn')
+              else showToast(`Файл загружен: ${filename}. Выберите задачу из .mpp.`, 'ok')
             }}
             onCleared={() => {
               void clearMppUpload()

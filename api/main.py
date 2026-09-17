@@ -18,8 +18,8 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from demo.form_input import MONTHS_RU, FormState, form_ready_for_recalc  # noqa: E402
-from demo.catalog import load_form_options  # noqa: E402
-from demo.mpp_writer import project_available  # noqa: E402
+from demo.catalog import empty_form_options, load_form_options, options_from_mpp_rows  # noqa: E402
+from demo.mpp_writer import dump_mpp_rows, project_available  # noqa: E402
 from demo.payloads import agg_dict, build_recalc, prefill_payload  # noqa: E402
 
 app = FastAPI(title="PPT-MSP Construction Volumes API", version="1.0.0")
@@ -48,6 +48,8 @@ app.add_middleware(
 _JOBS: dict[str, dict[str, Any]] = {}
 # upload_id -> raw .mpp bytes (временное хранилище для демо)
 _UPLOADS: dict[str, bytes] = {}
+# upload_id -> {rows, options, filename}
+_UPLOAD_META: dict[str, dict[str, Any]] = {}
 _MAX_MPP_BYTES = 40 * 1024 * 1024
 
 
@@ -94,6 +96,32 @@ def _prune_uploads(keep: int = 10) -> None:
         return
     for key in list(_UPLOADS.keys())[:-keep]:
         _UPLOADS.pop(key, None)
+        _UPLOAD_META.pop(key, None)
+
+
+def _inspect_uploaded_mpp(data: bytes, filename: str) -> dict[str, Any]:
+    """Прочитать справочник из .mpp (COM). Без COM — пустые options."""
+    if not project_available():
+        return {
+            "options": empty_form_options(),
+            "com_available": False,
+            "warning": "Чтение задач из .mpp нужно на хосте с MS Project (Windows API).",
+        }
+    try:
+        project_name, rows = dump_mpp_rows(data)
+        options = options_from_mpp_rows(rows, project_name=project_name or Path(filename).stem)
+        return {
+            "options": options,
+            "rows": rows,
+            "com_available": True,
+            "warning": None if options.get("tasks") else "В .mpp не найдены leaf-задачи с ВОР (Text13).",
+        }
+    except Exception as e:
+        return {
+            "options": empty_form_options(),
+            "com_available": True,
+            "warning": f"Не удалось прочитать .mpp: {e}",
+        }
 
 
 @app.get("/api/health")
@@ -107,7 +135,7 @@ def health() -> dict[str, Any]:
 
 @app.get("/api/options")
 def options() -> dict[str, Any]:
-    """Справочники для селектов (из sample CSV / будущего контура БД)."""
+    """Справочники до загрузки .mpp — пустые; после upload смотрите ответ upload."""
     return load_form_options()
 
 
@@ -118,7 +146,7 @@ def prefill() -> dict[str, Any]:
 
 @app.post("/api/mpp/upload")
 async def upload_mpp(file: UploadFile = File(...)) -> dict[str, Any]:
-    """Временная загрузка исходного .mpp для последующего /api/recalc."""
+    """Загрузка исходного .mpp + справочник задач из файла (COM на Windows)."""
     name = (file.filename or "").strip()
     if not name.lower().endswith(".mpp"):
         raise HTTPException(status_code=400, detail="Нужен файл с расширением .mpp")
@@ -129,11 +157,34 @@ async def upload_mpp(file: UploadFile = File(...)) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail="Файл .mpp слишком большой (лимит 40 МБ)")
     upload_id = str(uuid.uuid4())
     _UPLOADS[upload_id] = data
+    inspected = _inspect_uploaded_mpp(data, name)
+    _UPLOAD_META[upload_id] = {
+        "filename": name,
+        "options": inspected["options"],
+        "rows": inspected.get("rows") or [],
+    }
     _prune_uploads()
     return {
         "upload_id": upload_id,
         "filename": name,
         "size": len(data),
+        "options": inspected["options"],
+        "com_available": inspected["com_available"],
+        "warning": inspected.get("warning"),
+        "source": "mpp",
+    }
+
+
+@app.get("/api/mpp/{upload_id}/options")
+def mpp_options(upload_id: str) -> dict[str, Any]:
+    meta = _UPLOAD_META.get(upload_id)
+    if not meta:
+        raise HTTPException(status_code=404, detail="Загрузка не найдена — загрузите .mpp снова")
+    return {
+        "upload_id": upload_id,
+        "filename": meta.get("filename"),
+        "options": meta.get("options") or empty_form_options(),
+        "source": "mpp",
     }
 
 
@@ -155,7 +206,10 @@ def recalc(body: FormIn) -> dict[str, Any]:
             detail="Нужны ВОР > 0 и хотя бы одна неделя с фактом > 0",
         )
     mpp_bytes = _resolve_mpp_bytes(body.mpp_upload_id)
-    payload, files = build_recalc(state, mpp_bytes=mpp_bytes)
+    etalon_rows = None
+    if body.mpp_upload_id and body.mpp_upload_id in _UPLOAD_META:
+        etalon_rows = _UPLOAD_META[body.mpp_upload_id].get("rows") or None
+    payload, files = build_recalc(state, mpp_bytes=mpp_bytes, etalon_rows=etalon_rows)
     _JOBS[payload["job_id"]] = {
         **files,
         "created": datetime.now(timezone.utc).isoformat(),

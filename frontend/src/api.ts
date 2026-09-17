@@ -120,11 +120,16 @@ export async function fetchPrefill(): Promise<PrefillResponse> {
   return res.json()
 }
 
-async function uploadMppHttp(file: File, base: string): Promise<{
+export type MppUploadResult = {
   upload_id: string
   filename: string
   size: number
-}> {
+  options?: FormOptions
+  warning?: string | null
+  com_available?: boolean
+}
+
+async function uploadMppHttp(file: File, base: string): Promise<MppUploadResult> {
   const body = new FormData()
   body.append('file', file)
   const res = await fetchWithTimeout(
@@ -136,37 +141,41 @@ async function uploadMppHttp(file: File, base: string): Promise<{
   return res.json()
 }
 
-export async function uploadMpp(file: File): Promise<{
-  upload_id: string
-  filename: string
-  size: number
-}> {
+export async function uploadMpp(file: File): Promise<MppUploadResult> {
   if (file.size > MAX_MPP_BYTES) {
     throw new Error(`Файл больше ${MAX_MPP_BYTES / (1024 * 1024)} МБ`)
   }
 
-  // Streamlit: не шлём файл через postMessage (ломается) — держим в памяти до пересчёта
-  if (isStreamlitComponent()) {
-    const base = await resolveApiBase()
-    if (base) {
-      try {
-        const info = await uploadMppHttp(file, base)
-        streamlitPendingFile = null
-        return info
-      } catch {
-        /* туннель недоступен — локальный pending */
+  // Справочник задач читается из .mpp на Windows API (COM)
+  const base = await resolveApiBase()
+  if (base) {
+    try {
+      const info = await uploadMppHttp(file, base)
+      streamlitPendingFile = null
+      if (!info.options?.tasks?.length) {
+        throw new Error(
+          info.warning ||
+            'В .mpp нет задач с ВОР — нужен Windows API с MS Project для чтения файла',
+        )
       }
-    }
-    streamlitPendingFile = file
-    return {
-      upload_id: 'browser-pending',
-      filename: file.name,
-      size: file.size,
+      return info
+    } catch (e) {
+      if (!isStreamlitComponent()) throw e
+      // Streamlit: без туннеля нельзя прочитать каталог из .mpp
+      throw e instanceof Error
+        ? e
+        : new Error('Не удалось загрузить .mpp через Windows API')
     }
   }
 
-  const base = await resolveApiBase()
-  return uploadMppHttp(file, base)
+  if (isStreamlitComponent()) {
+    throw new Error(
+      'Нужен живой Windows API (MS Project) для чтения задач из .mpp. CSV больше не используется.',
+    )
+  }
+
+  // Локальный uvicorn без absolute base
+  return uploadMppHttp(file, '')
 }
 
 export async function clearMppUpload(): Promise<void> {

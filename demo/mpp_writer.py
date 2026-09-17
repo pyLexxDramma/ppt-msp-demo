@@ -267,6 +267,108 @@ def apply_updates_to_mpp(
                 pass
 
 
+def _com_text(task: Any, attr: str) -> str:
+    try:
+        v = getattr(task, attr, None)
+    except Exception:
+        return ""
+    if v is None:
+        return ""
+    return str(v).strip()
+
+
+def dump_mpp_rows(mpp_bytes: bytes) -> tuple[str, list[dict[str, str]]]:
+    """Прочитать задачи из .mpp через COM → канонические строки (как CSV-прокси раньше).
+
+    Возвращает (имя_проекта, rows). Leaf с ВОР>0 — для справочника формы.
+    """
+    if not mpp_bytes:
+        raise ValueError("Пустой .mpp")
+    import win32com.client
+
+    with _COM_LOCK:
+        with tempfile.TemporaryDirectory() as td:
+            src = Path(td) / "in.mpp"
+            src.write_bytes(mpp_bytes)
+            app = win32com.client.Dispatch("MSProject.Application")
+            app.Visible = False
+            app.DisplayAlerts = False
+            try:
+                app.FileOpen(str(src))
+                proj = app.ActiveProject
+                try:
+                    project_name = str(proj.Name or "").strip() or "Проект"
+                except Exception:
+                    project_name = "Проект"
+                rows: list[dict[str, str]] = []
+                for t in proj.Tasks:
+                    if t is None:
+                        continue
+                    try:
+                        tid = str(int(t.ID))
+                    except Exception:
+                        continue
+                    try:
+                        is_summary = bool(t.Summary)
+                    except Exception:
+                        is_summary = False
+                    name = _com_text(t, "Name")
+                    vor = _com_text(t, "Text13")
+                    unit = _com_text(t, "Text14")
+                    vor_fact = _com_text(t, "Text15")
+                    vor_rest = _com_text(t, "Text16")
+                    pct = _com_text(t, "Number1")
+                    rem = _com_text(t, "Number2")
+                    start = ""
+                    finish = ""
+                    try:
+                        if t.Start is not None:
+                            start = t.Start.strftime("%d.%m.%y")
+                    except Exception:
+                        start = _com_text(t, "Start")
+                    try:
+                        if t.Finish is not None:
+                            finish = t.Finish.strftime("%d.%m.%y")
+                    except Exception:
+                        finish = _com_text(t, "Finish")
+                    preds = ""
+                    succs = ""
+                    try:
+                        preds = str(t.Predecessors or "")
+                    except Exception:
+                        pass
+                    try:
+                        succs = str(t.Successors or "")
+                    except Exception:
+                        pass
+                    rows.append(
+                        {
+                            "Ид": tid,
+                            "Название": name,
+                            "БЛОК": "Суммарная задача" if is_summary else "Задача",
+                            "ВОР": vor,
+                            "Ед_изм": unit,
+                            "ВОР_факт": vor_fact,
+                            "ВОР_остаток": vor_rest,
+                            "%_выполнения_ВОР": pct,
+                            "Осталось_дней_прогноз": rem,
+                            "Начало": start,
+                            "Окончание": finish,
+                            "Предшественники": preds,
+                            "Последователи": succs,
+                            "ID_проекта": "",
+                            "Заметки": "",
+                        }
+                    )
+                app.FileClose(0)
+                return project_name, rows
+            finally:
+                try:
+                    app.Quit()
+                except Exception:
+                    pass
+
+
 def verify_mpp_links(
     mpp_before: bytes,
     mpp_after: bytes,

@@ -40,7 +40,8 @@ def test_health_and_options() -> None:
     o = client.get("/api/options")
     assert o.status_code == 200
     data = o.json()
-    assert data["projects"] and data["tasks"] and data["units"]
+    assert data["months"] and data["years"] and data["units"]
+    assert data["tasks"] == []
 
 
 def test_prefill() -> None:
@@ -72,10 +73,10 @@ def test_recalc_ok_shape() -> None:
     assert "before" in data["update"]
     assert isinstance(data.get("schedule_before"), list)
     assert isinstance(data.get("schedule_after"), list)
-    assert data["schedule_before"]
-    assert data["schedule_after"]
-    changed = [r for r in data["schedule_after"] if r.get("Ид") == "6"]
-    assert changed and changed[0].get("Изменено")
+    # без загруженного .mpp таблицы эталона могут быть пустыми
+    if data["schedule_after"]:
+        changed = [r for r in data["schedule_after"] if r.get("Ид") == "6"]
+        assert changed and changed[0].get("Изменено")
     if data["downloads"]["mpp"]:
         assert data["mpp_error"] in (None, "")
     else:

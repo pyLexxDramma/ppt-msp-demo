@@ -1,15 +1,22 @@
 import { useRef, useState } from 'react'
+import type { FormOptions } from '../options'
+import type { MppUploadResult } from '../api'
 
 type Props = {
   filename: string | null
   busy?: boolean
-  onUploaded: (info: { uploadId: string; filename: string; size: number }) => void
+  onUploaded: (info: {
+    uploadId: string
+    filename: string
+    size: number
+    options?: FormOptions
+    warning?: string | null
+  }) => void
   onCleared: () => void
   onError: (message: string) => void
-  uploadFn: (file: File) => Promise<{ upload_id: string; filename: string; size: number }>
+  uploadFn: (file: File) => Promise<MppUploadResult>
 }
 
-/** Локальный/Vite picker. На Streamlit Cloud файл берётся нативным st.file_uploader. */
 export function MppUploadCard({
   filename,
   busy,
@@ -34,6 +41,8 @@ export function MppUploadCard({
         uploadId: info.upload_id,
         filename: info.filename || file.name,
         size: info.size,
+        options: info.options,
+        warning: info.warning,
       })
     } catch (e) {
       onError(e instanceof Error ? e.message : 'Не удалось загрузить .mpp')
@@ -49,7 +58,7 @@ export function MppUploadCard({
         <div>
           <p className="card-title">1. Исходный .mpp</p>
           <p className="field-caption">
-            Загрузите эталонный график MS Project — затем заполните объёмы и пересчитайте.
+            Загрузите эталонный график MS Project — задачи, ВОР и накоплено подтянутся из файла.
           </p>
         </div>
       </div>

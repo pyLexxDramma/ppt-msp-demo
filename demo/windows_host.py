@@ -117,6 +117,28 @@ def remote_recalc(
         return None
 
 
+def remote_upload_mpp(
+    mpp_bytes: bytes,
+    *,
+    filename: str = "source.mpp",
+    timeout: float = 120.0,
+) -> dict[str, Any] | None:
+    """Загрузить .mpp на Windows API и получить options (задачи/ВОР/ВОР_факт)."""
+    base = resolve_windows_api_url()
+    if not base:
+        return None
+    try:
+        with httpx.Client(timeout=timeout) as client:
+            up = client.post(
+                f"{base}/api/mpp/upload",
+                files={"file": (filename, mpp_bytes, "application/octet-stream")},
+            )
+            up.raise_for_status()
+            return up.json()
+    except Exception:
+        return None
+
+
 def pipe_from_remote(data: dict[str, Any]) -> SimpleNamespace:
     agg = data.get("aggregates") or {}
     upd = data.get("update") or {}
