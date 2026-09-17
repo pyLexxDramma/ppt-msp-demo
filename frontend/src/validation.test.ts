@@ -50,10 +50,20 @@ describe('validateForm', () => {
   it('ВОР > 0 и хотя бы один факт > 0', () => {
     const form = sampleFormForTests()
     form.vor = 0
+    form.month_fact = null
     form.weeks = form.weeks.map((w) => ({ ...w, fact: null }))
     const err = validateForm(form, options)
     expect(err.vor).toBeTruthy()
     expect(err.weeks_fact).toBeTruthy()
+  })
+
+  it('требует план и факт за месяц', () => {
+    const form = sampleFormForTests()
+    form.month_plan = null
+    form.month_fact = null
+    const err = validateForm(form, options)
+    expect(err.month_plan).toBeTruthy()
+    expect(err.month_fact).toBeTruthy()
   })
 
   it('ед.изм. из справочника', () => {

@@ -4,6 +4,7 @@ import { CustomSelect } from './components/CustomSelect'
 import { FieldLabel } from './components/FieldLabel'
 import { MppFieldsDisclosure } from './components/MppFieldsDisclosure'
 import { MppUploadCard } from './components/MppUploadCard'
+import { ReadonlyValue } from './components/ReadonlyValue'
 import { ScheduleTable } from './components/ScheduleTable'
 import { computeAggregates, fmt, periodLabel, signedFmt } from './formLogic'
 import { FIELD_HELP, type FormOptions } from './options'
@@ -195,19 +196,10 @@ export default function App() {
     value: p.id,
     label: `${p.name}`,
   }))
-  const projectIdOpts = (options?.projects ?? []).map((p) => ({
-    value: p.id,
-    label: p.id,
-  }))
   const taskOpts = (options?.tasks ?? []).map((t) => ({
     value: t.id,
     label: t.name,
   }))
-  const taskIdOpts = (options?.tasks ?? []).map((t) => ({
-    value: t.id,
-    label: t.id,
-  }))
-  const unitOpts = (options?.units ?? []).map((u) => ({ value: u, label: u }))
   const monthOpts = months.map((m, i) => ({ value: String(i), label: m }))
   const yearOpts = (options?.years ?? [2024, 2025, 2026, 2027, 2028]).map((y) => ({
     value: String(y),
@@ -310,6 +302,7 @@ export default function App() {
               <div className="settings-fields">
                 <FieldLabel
                   className="wide"
+                  editable
                   label="Объект / ЖК"
                   help={FIELD_HELP.project}
                   error={showErr('project')}
@@ -328,16 +321,14 @@ export default function App() {
                   help={FIELD_HELP.project_id}
                   error={showErr('project_id')}
                 >
-                  <CustomSelect
-                    value={form.project_id}
-                    options={projectIdOpts}
-                    disabled
-                    invalid={Boolean(showErr('project_id'))}
-                    onChange={() => undefined}
-                    aria-label="ID проекта"
-                  />
+                  <ReadonlyValue value={form.project_id} aria-label="ID проекта" />
                 </FieldLabel>
-                <FieldLabel label="Месяц отчёта" help={FIELD_HELP.period_month} error={showErr('period_month')}>
+                <FieldLabel
+                  editable
+                  label="Месяц отчёта"
+                  help={FIELD_HELP.period_month}
+                  error={showErr('period_month')}
+                >
                   <CustomSelect
                     value={form.period_month < 0 ? '' : String(form.period_month)}
                     options={monthOpts}
@@ -347,7 +338,7 @@ export default function App() {
                     aria-label="Месяц отчёта"
                   />
                 </FieldLabel>
-                <FieldLabel label="Год" help={FIELD_HELP.period_year} error={showErr('period_year')}>
+                <FieldLabel editable label="Год" help={FIELD_HELP.period_year} error={showErr('period_year')}>
                   <CustomSelect
                     value={form.period_year ? String(form.period_year) : ''}
                     options={yearOpts}
@@ -359,21 +350,21 @@ export default function App() {
                 </FieldLabel>
                 <FieldLabel
                   className="wide"
+                  editable
                   label="Режим расчёта прогноза"
                   help={FIELD_HELP.mode}
                 >
                   <CustomSelect
                     value={form.mode || 'last'}
                     options={modeOpts}
-                    disabled
-                    onChange={() => undefined}
+                    onChange={(v) => patch('mode', v)}
                     aria-label="Режим расчёта"
                   />
-                  <p className="field-caption">остальные режимы — следующий этап</p>
                 </FieldLabel>
               </div>
               <p className="settings-caption">
-                Данные по выбранному периоду вносятся вручную, один раз в неделю
+                <span className="field-edit-mark" aria-hidden>*</span> — поля для заполнения; синие —
+                из графика автоматически
               </p>
             </div>
 
@@ -385,7 +376,12 @@ export default function App() {
                 </div>
               </div>
               <div className="form-grid">
-                <FieldLabel label="Наименование работ" help={FIELD_HELP.task_name} error={showErr('task_name')}>
+                <FieldLabel
+                  editable
+                  label="Наименование работ"
+                  help={FIELD_HELP.task_name}
+                  error={showErr('task_name')}
+                >
                   <CustomSelect
                     value={form.task_id}
                     options={taskOpts}
@@ -395,33 +391,80 @@ export default function App() {
                   />
                 </FieldLabel>
                 <FieldLabel label="Ид задачи (MSP)" help={FIELD_HELP.task_id} error={showErr('task_id')}>
-                  <CustomSelect
-                    value={form.task_id}
-                    options={taskIdOpts}
-                    disabled
-                    invalid={Boolean(showErr('task_id'))}
-                    onChange={() => undefined}
-                    aria-label="Ид задачи"
-                  />
+                  <ReadonlyValue value={form.task_id} aria-label="Ид задачи" />
                 </FieldLabel>
                 <FieldLabel label="ВОР" help={FIELD_HELP.vor} error={showErr('vor')}>
-                  <input
-                    id="tVor"
-                    type="number"
-                    readOnly
-                    disabled
-                    className={`readonly-input${showErr('vor') ? ' invalid' : ''}`}
-                    value={form.vor}
+                  <ReadonlyValue
+                    value={form.vor > 0 ? fmt(form.vor) : ''}
                     aria-label="ВОР из графика"
                   />
                 </FieldLabel>
                 <FieldLabel label="Ед. измерения" help={FIELD_HELP.unit} error={showErr('unit')}>
-                  <CustomSelect
-                    value={form.unit}
-                    options={unitOpts}
-                    invalid={Boolean(showErr('unit'))}
-                    onChange={(v) => patch('unit', v)}
-                    aria-label="Ед. измерения"
+                  <ReadonlyValue value={form.unit} aria-label="Ед. измерения из графика" />
+                </FieldLabel>
+              </div>
+            </div>
+
+            <div className="form-section">
+              <div className="card-head-row">
+                <div>
+                  <p className="card-title">Объёмы за месяц</p>
+                  <p className="card-sub">
+                    План и факт за отчётный месяц — отклонение считается как план − факт
+                  </p>
+                </div>
+                <span className="period-pill">{periodLabel(form, months)}</span>
+              </div>
+              <div className="form-grid month-volume-grid">
+                <FieldLabel
+                  editable
+                  label="План на месяц"
+                  help={FIELD_HELP.month_plan}
+                  error={showErr('month_plan')}
+                >
+                  <input
+                    type="number"
+                    className={showErr('month_plan') ? 'invalid' : undefined}
+                    value={form.month_plan ?? ''}
+                    onChange={(e) => {
+                      const v = e.target.value
+                      patch('month_plan', v === '' ? null : Number(v))
+                    }}
+                    aria-label="План на месяц"
+                  />
+                </FieldLabel>
+                <FieldLabel
+                  editable
+                  label="Факт за месяц"
+                  help={FIELD_HELP.month_fact}
+                  error={showErr('month_fact')}
+                >
+                  <input
+                    type="number"
+                    className={showErr('month_fact') ? 'invalid' : undefined}
+                    value={form.month_fact ?? ''}
+                    onChange={(e) => {
+                      const v = e.target.value
+                      patch('month_fact', v === '' ? null : Number(v))
+                    }}
+                    aria-label="Факт за месяц"
+                  />
+                </FieldLabel>
+                <FieldLabel label="Отклонение за месяц" help={FIELD_HELP.month_deviation}>
+                  <ReadonlyValue
+                    className={
+                      agg.month_deviation == null
+                        ? undefined
+                        : agg.month_deviation >= 0
+                          ? 'month-dev-pos'
+                          : 'month-dev-neg'
+                    }
+                    value={
+                      agg.month_deviation == null
+                        ? null
+                        : `${agg.month_deviation > 0 ? '+' : ''}${fmt(agg.month_deviation)}`
+                    }
+                    aria-label="Отклонение за месяц"
                   />
                 </FieldLabel>
               </div>
@@ -432,10 +475,9 @@ export default function App() {
                 <div>
                   <p className="card-title">Ввод по неделям</p>
                   <p className="card-sub">
-                    План и факт по неделям — отклонение и накопительно считаются автоматически
+                    План и факт по неделям — для прогноза Mode1; отклонение по неделе: факт − план
                   </p>
                 </div>
-                <span className="period-pill">{periodLabel(form, months)}</span>
               </div>
 
               <div className="zone zone-blue">
@@ -448,6 +490,7 @@ export default function App() {
                     <FieldLabel
                       key={`plan-${i}`}
                       className="zone-field"
+                      editable
                       label={`${i + 1} нед.`}
                       help={FIELD_HELP.week_plan}
                       error={showErr(`week_plan_${i}`)}
@@ -473,6 +516,7 @@ export default function App() {
                     <FieldLabel
                       key={`fact-${i}`}
                       className="zone-field"
+                      editable
                       label={`${i + 1} нед.`}
                       help={FIELD_HELP.week_fact}
                       error={showErr(`week_fact_${i}`)}
@@ -547,21 +591,14 @@ export default function App() {
               <div className="stat-row">
                 <div className="stat">
                   <FieldLabel
-                    htmlFor="sPrevCum"
                     label="Накоплено до периода"
                     help={FIELD_HELP.prev_cumulative}
                     error={showErr('prev_cumulative')}
                   >
                     <div className="stat-value">
-                      <input
-                        id="sPrevCum"
-                        type="number"
-                        readOnly
-                        disabled
-                        className={`readonly-input${showErr('prev_cumulative') ? ' invalid' : ''}`}
-                        value={form.prev_cumulative}
-                        aria-label="Накоплено до периода из эталона"
-                      />
+                      <div className="val" aria-label="Накоплено до периода из эталона">
+                        {fmt(form.prev_cumulative)}
+                      </div>
                     </div>
                   </FieldLabel>
                 </div>

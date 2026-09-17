@@ -26,9 +26,8 @@ describe('calcHelp catalog', () => {
     expect(MPP_FIELDS_UNCHANGED.some((f) => f.projectField.includes('Baseline'))).toBe(true)
   })
 
-  it('formulaById returns known entries', () => {
-    expect(formulaById('done')?.formula).toContain('накоплено_до_периода')
-    expect(formulaById('missing')).toBeUndefined()
+  it('contains month deviation formula', () => {
+    expect(formulaById('month_deviation')?.formula).toContain('план')
   })
 })
 

@@ -18,11 +18,12 @@ from demo.form_input import (
 def test_aggregates_mockup_default() -> None:
     state = sample_form_for_tests()
     agg = compute_aggregates(state)
-    # 10+30+0+15 = 55 факт; prev 0 → done 55; vor 350 → rest 295
+    # month_plan=100, month_fact=55; prev 0 → done 55; vor 350 → rest 295
     assert agg.fact_total == 55
     assert agg.done == 55
     assert agg.remaining == 295
     assert agg.plan_total == 100
+    assert agg.month_deviation == 45  # 100 - 55
     assert form_ready_for_recalc(state) is True
 
 
