@@ -147,54 +147,34 @@ export async function uploadMpp(file: File): Promise<MppUploadResult> {
   }
 
   const base = await resolveApiBase()
-  if (base) {
-    try {
-      const info = await uploadMppHttp(file, base)
-      streamlitPendingFile = null
-      if (!info.options?.tasks?.length) {
-        // Файл на сервере есть; каталог пуст — старый Windows API / нет COM / нет Text13
-        const warning =
-          info.warning ||
-          (info.options == null
-            ? 'Файл принят, но Windows API не отдал задачи из .mpp. Обновите ppt-msp-demo на хосте с MS Project и перезапустите API.'
-            : 'Файл принят, но в .mpp нет leaf-задач с ВОР (поле Text13).')
-        return { ...info, warning }
-      }
-      return info
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Не удалось загрузить .mpp'
-      if (!isStreamlitComponent()) throw e
-      // Сеть/туннель: оставляем файл в браузере для пересчёта
-      streamlitPendingFile = file
+  if (!base && isStreamlitComponent()) {
+    throw new Error(
+      'Нет живого Windows API (MS Project). Без него .mpp не читается — загрузка отменена.',
+    )
+  }
+
+  try {
+    const info = await uploadMppHttp(file, base || '')
+    if (!info.options?.tasks?.length) {
       throw new Error(
-        `${msg} Проверьте Windows-туннель (cloudflared) и что API запущен.`,
+        info.warning ||
+          (info.options == null
+            ? 'Windows API не вернул задачи из .mpp. Обновите хост с MS Project и перезапустите API — загрузка отменена.'
+            : 'В .mpp нет leaf-задач с ВОР (Text13). Загрузка отменена — данные были бы некорректны.'),
       )
     }
-  }
-
-  if (isStreamlitComponent()) {
-    // Нет URL Windows API — файл хотя бы выбирается локально
-    streamlitPendingFile = file
-    return {
-      upload_id: 'browser-pending',
-      filename: file.name,
-      size: file.size,
-      warning:
-        'Файл выбран. Для задач/ВОР/накоплено из .mpp нужен живой Windows API (MS Project).',
+    streamlitPendingFile = null
+    return info
+  } catch (e) {
+    streamlitPendingFile = null
+    const msg = e instanceof Error ? e.message : 'Не удалось загрузить .mpp'
+    if (msg.includes('отменена') || msg.includes('Text13') || msg.includes('Windows API')) {
+      throw e instanceof Error ? e : new Error(msg)
     }
+    throw new Error(
+      `${msg} Нужен доступный Windows API с MS Project. Загрузка отменена.`,
+    )
   }
-
-  // Локальный uvicorn (относительный /api)
-  const info = await uploadMppHttp(file, '')
-  if (!info.options?.tasks?.length) {
-    return {
-      ...info,
-      warning:
-        info.warning ||
-        'Файл принят, но задачи из .mpp не прочитаны (нужны MS Project + pywin32 на этом хосте).',
-    }
-  }
-  return info
 }
 
 export async function clearMppUpload(): Promise<void> {

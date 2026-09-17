@@ -269,9 +269,17 @@ export default function App() {
             busy={busy}
             uploadFn={uploadMpp}
             onUploaded={({ uploadId, filename, options, warning }) => {
+              if (!options?.tasks?.length) {
+                showToast(
+                  warning ||
+                    'Загрузка отклонена: из .mpp не прочитаны задачи (нужен Windows API).',
+                  'warn',
+                )
+                return
+              }
               setMppUploadId(uploadId)
               setMppFilename(filename)
-              if (options) setOptions(options)
+              setOptions(options)
               setForm(defaultForm())
               setTouched(false)
               setResult(null)
