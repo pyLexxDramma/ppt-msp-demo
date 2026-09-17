@@ -45,6 +45,8 @@ class FormState:
     vor: float = 0.0
     unit: str = ""
     prev_cumulative: float = 0.0
+    month_plan: float | None = None
+    month_fact: float | None = None
     weeks: list[WeekRow] = field(default_factory=list)
 
     def __post_init__(self) -> None:
@@ -78,6 +80,8 @@ class FormState:
             vor=float(raw.get("vor") or 0),
             unit=str(raw.get("unit") or ""),
             prev_cumulative=float(raw.get("prev_cumulative") or 0),
+            month_plan=_opt_float(raw.get("month_plan"), none_ok=True),
+            month_fact=_opt_float(raw.get("month_fact"), none_ok=True),
             weeks=weeks,
         )
 
@@ -100,6 +104,8 @@ def sample_form_for_tests() -> FormState:
         vor=350.0,
         unit="шт",
         prev_cumulative=0.0,
+        month_plan=100.0,
+        month_fact=55.0,
         weeks=[
             WeekRow(20, 10),
             WeekRow(20, 30),
@@ -120,6 +126,7 @@ class WeekAgg:
 class FormAggregates:
     plan_total: float
     fact_total: float
+    month_deviation: float | None
     month_cum: float
     done: float
     remaining: float
@@ -156,33 +163,41 @@ def period_label(state: FormState) -> str:
 
 
 def compute_aggregates(state: FormState) -> FormAggregates:
-    plan_total = 0.0
-    fact_total = 0.0
+    week_plan = 0.0
+    week_fact = 0.0
     cum: float | None = None
     last_cum = 0.0
     rows: list[WeekAgg] = []
 
     for w in state.weeks[:WEEKS_COUNT]:
         plan_v = float(w.plan or 0)
-        plan_total += plan_v
+        week_plan += plan_v
         if w.fact is None:
             rows.append(WeekAgg(dev=None, cum=None))
             continue
         f = float(w.fact)
-        fact_total += f
+        week_fact += f
         dev = f - plan_v
         row_cum = (0.0 if cum is None else cum) + dev
         cum = row_cum
         last_cum = row_cum
         rows.append(WeekAgg(dev=dev, cum=row_cum))
 
+    month_plan = float(state.month_plan) if state.month_plan is not None else week_plan
+    month_fact = float(state.month_fact) if state.month_fact is not None else week_fact
+    month_deviation = None
+    if state.month_plan is not None and state.month_fact is not None:
+        month_deviation = float(state.month_plan) - float(state.month_fact)
+
+    period_fact = float(state.month_fact) if state.month_fact is not None else week_fact
     vor = float(state.vor or 0)
-    done = float(state.prev_cumulative or 0) + fact_total
+    done = float(state.prev_cumulative or 0) + period_fact
     remaining = vor - done
     pct = (done / vor * 100.0) if vor else 0.0
     return FormAggregates(
-        plan_total=plan_total,
-        fact_total=fact_total,
+        plan_total=month_plan,
+        fact_total=month_fact,
+        month_deviation=month_deviation,
         month_cum=last_cum,
         done=done,
         remaining=remaining,
@@ -201,13 +216,15 @@ def weeks_plan_list(state: FormState) -> list[float | None]:
 
 
 def form_ready_for_recalc(state: FormState) -> bool:
-    """Гейт: период, ВОР > 0 и хотя бы один факт > 0."""
+    """Гейт: период, ВОР > 0 и факт за месяц или неделя > 0."""
     if int(state.period_month) < 0 or int(state.period_month) > 11:
         return False
     if int(state.period_year) < 2000:
         return False
     if float(state.vor or 0) <= 0:
         return False
+    if state.month_fact is not None and float(state.month_fact) > 0:
+        return True
     for w in state.weeks:
         if w.fact is not None and float(w.fact) > 0:
             return True
@@ -216,9 +233,14 @@ def form_ready_for_recalc(state: FormState) -> bool:
 
 def to_mode1_inputs(state: FormState) -> dict[str, Any]:
     agg = compute_aggregates(state)
+    facts = weeks_fact_list(state)
+    if state.month_fact is not None and float(state.month_fact) > 0:
+        if not any(f is not None and float(f) > 0 for f in facts):
+            # Нет недельного факта — для Mode1 кладём факт месяца в 1-ю неделю
+            facts = [float(state.month_fact), None, None, None, None]
     return {
         "rest": agg.remaining,
-        "weeks_fact": weeks_fact_list(state),
+        "weeks_fact": facts,
         "today": today_from_period(state),
         "total": agg.vor,
         "done": agg.done,

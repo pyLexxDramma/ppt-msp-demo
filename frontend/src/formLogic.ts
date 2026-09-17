@@ -2,8 +2,8 @@ import type { Aggregates, FormState } from './types'
 import { WEEKS_COUNT } from './types'
 
 export function computeAggregates(state: FormState): Aggregates {
-  let planTotal = 0
-  let factTotal = 0
+  let weekPlanTotal = 0
+  let weekFactTotal = 0
   let cum: number | null = null
   let lastCum = 0
   const rows: Aggregates['rows'] = []
@@ -11,13 +11,13 @@ export function computeAggregates(state: FormState): Aggregates {
   for (let i = 0; i < WEEKS_COUNT; i++) {
     const w = state.weeks[i] ?? { plan: 0, fact: null }
     const planV = Number(w.plan) || 0
-    planTotal += planV
+    weekPlanTotal += planV
     if (w.fact === null || w.fact === undefined || Number.isNaN(Number(w.fact))) {
       rows.push({ dev: null, cum: null })
       continue
     }
     const f = Number(w.fact)
-    factTotal += f
+    weekFactTotal += f
     const dev = f - planV
     const rowCum: number = (cum === null ? 0 : cum) + dev
     cum = rowCum
@@ -25,14 +25,37 @@ export function computeAggregates(state: FormState): Aggregates {
     rows.push({ dev, cum: rowCum })
   }
 
+  const monthPlan =
+    state.month_plan !== null && state.month_plan !== undefined && !Number.isNaN(Number(state.month_plan))
+      ? Number(state.month_plan)
+      : weekPlanTotal
+  const monthFact =
+    state.month_fact !== null && state.month_fact !== undefined && !Number.isNaN(Number(state.month_fact))
+      ? Number(state.month_fact)
+      : weekFactTotal
+
+  const month_deviation =
+    state.month_plan === null ||
+    state.month_plan === undefined ||
+    state.month_fact === null ||
+    state.month_fact === undefined
+      ? null
+      : Number(state.month_plan) - Number(state.month_fact)
+
   const vor = Number(state.vor) || 0
-  const done = (Number(state.prev_cumulative) || 0) + factTotal
+  // Накоплено с начала: приоритет у «Факт за месяц», иначе сумма фактов по неделям
+  const periodFact =
+    state.month_fact !== null && state.month_fact !== undefined && !Number.isNaN(Number(state.month_fact))
+      ? Number(state.month_fact)
+      : weekFactTotal
+  const done = (Number(state.prev_cumulative) || 0) + periodFact
   const remaining = vor - done
   const pct_done = vor ? (done / vor) * 100 : 0
 
   return {
-    plan_total: planTotal,
-    fact_total: factTotal,
+    plan_total: monthPlan,
+    fact_total: monthFact,
+    month_deviation,
     month_cum: lastCum,
     done,
     remaining,
@@ -44,6 +67,14 @@ export function computeAggregates(state: FormState): Aggregates {
 
 export function formReady(state: FormState): boolean {
   if ((Number(state.vor) || 0) <= 0) return false
+  if (
+    state.month_fact !== null &&
+    state.month_fact !== undefined &&
+    !Number.isNaN(Number(state.month_fact)) &&
+    Number(state.month_fact) > 0
+  ) {
+    return true
+  }
   return state.weeks.some((w) => w.fact !== null && w.fact !== undefined && Number(w.fact) > 0)
 }
 

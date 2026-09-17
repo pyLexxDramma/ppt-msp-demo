@@ -328,7 +328,7 @@ body {
 
 .form-block {
   padding: 0;
-  overflow: hidden;
+  overflow: visible;
   border-radius: var(--radius);
 }
 
@@ -403,6 +403,12 @@ body {
   align-items: flex-start;
 }
 
+.field-edit-mark {
+  color: #c47a12;
+  font-weight: 800;
+  margin-left: 2px;
+}
+
 .field-wrap {
   display: flex;
   flex-direction: column;
@@ -457,7 +463,7 @@ body {
 .info-tip:hover,
 .info-tip:focus,
 .info-tip:focus-within {
-  z-index: 60;
+  z-index: 2147483647;
 }
 
 .info-tip-bubble {
@@ -479,7 +485,7 @@ body {
   font-style: normal;
   line-height: 1.35;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
-  z-index: 70;
+  z-index: 2147483647;
   white-space: normal;
   pointer-events: none;
 }
@@ -672,10 +678,12 @@ input.invalid,
   margin: 0;
   font-size: 11.5px;
   color: var(--ink-faint);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  line-height: 1.3;
+  white-space: normal;
+  line-height: 1.35;
+}
+
+.settings-caption .field-edit-mark {
+  margin-left: 0;
 }
 
 .theme-toggle {
@@ -838,6 +846,40 @@ input.invalid,
   color: var(--ink-faint);
 }
 
+.field-wrap.is-editable > .field-label-row label {
+  color: var(--ink-soft);
+}
+
+.field-wrap.is-editable .cselect-trigger,
+.form-grid .field-wrap.is-editable > input:not([readonly]):not(:disabled),
+.field-wrap.is-editable.zone-field input {
+  background: var(--surface);
+  border: 1.5px solid var(--zone-amber-border);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--zone-amber-bg) 65%, transparent);
+}
+
+.field-wrap.is-editable .cselect-trigger:hover:not(:disabled),
+.form-grid .field-wrap.is-editable > input:not([readonly]):not(:disabled):hover,
+.field-wrap.is-editable.zone-field input:hover {
+  border-color: #e0b45a;
+  background: color-mix(in srgb, var(--zone-amber-bg) 45%, var(--surface));
+}
+
+.field-wrap.is-editable .cselect-trigger:focus-visible,
+.form-grid .field-wrap.is-editable > input:not([readonly]):not(:disabled):focus,
+.field-wrap.is-editable.zone-field input:focus {
+  outline: 2px solid color-mix(in srgb, #c47a12 55%, transparent);
+  outline-offset: 1px;
+  border-color: #c47a12;
+}
+
+.field-wrap.is-editable.has-error .cselect-trigger,
+.form-grid .field-wrap.is-editable.has-error > input,
+.field-wrap.is-editable.zone-field.has-error input {
+  border-color: var(--red);
+  box-shadow: none;
+}
+
 .zone-field .computed-val {
   width: 100%;
   border: 1px solid transparent;
@@ -925,10 +967,24 @@ input.invalid,
   line-height: 1.2;
 }
 
-/* FieldLabel внутри .stat: не тянуть label на 2 строки — иначе «i» съезжает */
+/* FieldLabel и обычный label — одна высота шапки, цифры на одной линии */
+.stat > .field-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  min-height: 100%;
+}
+
 .stat .field-label-row {
-  align-items: center;
-  min-height: 1.2em;
+  align-items: flex-start;
+  min-height: 2.4em;
+}
+
+.stat .field-label-row .info-tip {
+  align-self: flex-start;
+  margin-top: 1px;
 }
 
 .stat .field-label-row label {
@@ -940,6 +996,7 @@ input.invalid,
   min-height: 28px;
   display: flex;
   align-items: center;
+  margin-top: auto;
 }
 
 .stat .val {
@@ -1107,6 +1164,28 @@ input.invalid,
 .mpp-upload-card {
   margin-bottom: 14px;
   padding: 14px;
+}
+
+.month-volume-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.month-dev-pos {
+  color: var(--green);
+  font-weight: 700;
+}
+
+.month-dev-neg {
+  color: var(--red);
+  font-weight: 700;
+}
+
+@media (max-width: 760px) {
+  .month-volume-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .mpp-upload-row {
@@ -1354,11 +1433,51 @@ input.invalid,
   line-height: 1.3;
 }
 
-.readonly-input,
-.form-grid .field-wrap input.readonly-input:disabled {
-  opacity: 0.72;
-  cursor: not-allowed;
+.readonly-value {
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 7px 11px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--zone-blue-border);
+  background: var(--zone-blue-bg);
+  color: var(--blue-deep);
+  font-family: var(--font-body);
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.35;
+  word-break: break-word;
+  user-select: text;
+  cursor: default;
+}
+
+.readonly-value-text {
+  min-width: 0;
+}
+
+.readonly-value.is-empty {
+  color: var(--ink-faint);
+  font-weight: 500;
+  border-color: var(--line);
   background: var(--surface-soft);
+}
+
+.readonly-value.month-dev-pos,
+.readonly-value.month-dev-neg {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  border-color: var(--line);
+  background: var(--surface-soft);
+}
+
+.readonly-value.month-dev-pos {
+  color: var(--green);
+}
+
+.readonly-value.month-dev-neg {
+  color: var(--red);
 }
 
 .btn-spinner {

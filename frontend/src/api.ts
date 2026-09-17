@@ -198,18 +198,17 @@ export async function uploadMpp(file: File): Promise<MppUploadResult> {
   }
 
   const base = await resolveApiBase()
+  const emptyTasksError = (info: MppUploadResult) =>
+    info.warning ||
+    (info.options == null
+      ? 'Windows API не вернул задачи из .mpp. Обновите хост с MS Project и перезапустите API — загрузка отменена.'
+      : 'В .mpp нет leaf-задач с ВОР (Text13). Загрузка отменена — данные были бы некорректны.')
+
   if (base) {
     try {
       const info = await uploadMppHttp(file, base)
+      if (!info.options?.tasks?.length) throw new Error(emptyTasksError(info))
       streamlitPendingFile = null
-      if (!info.options?.tasks?.length) {
-        const warning =
-          info.warning ||
-          (info.options == null
-            ? 'Файл принят, но Windows API не отдал задачи из .mpp. Обновите ppt-msp-demo на хосте с MS Project и перезапустите API.'
-            : 'Файл принят, но в .mpp нет leaf-задач с ВОР (поле Text13).')
-        return { ...info, warning }
-      }
       return info
     } catch (e) {
       if (!isStreamlitComponent()) throw e
@@ -218,20 +217,14 @@ export async function uploadMpp(file: File): Promise<MppUploadResult> {
 
   if (isStreamlitComponent()) {
     const info = await uploadMppViaStreamlit(file)
+    if (!info.options?.tasks?.length) throw new Error(emptyTasksError(info))
     streamlitPendingFile = null
     return info
   }
 
-  // Локальный uvicorn (относительный /api)
-  const info = await uploadMppHttp(file, '')
-  if (!info.options?.tasks?.length) {
-    return {
-      ...info,
-      warning:
-        info.warning ||
-        'Файл принят, но задачи из .mpp не прочитаны (нужны MS Project + pywin32 на этом хосте).',
-    }
-  }
+  const info = await uploadMppHttp(file, base || '')
+  if (!info.options?.tasks?.length) throw new Error(emptyTasksError(info))
+  streamlitPendingFile = null
   return info
 }
 

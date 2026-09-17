@@ -22,6 +22,7 @@ def agg_dict(state: FormState) -> dict[str, Any]:
     return {
         "plan_total": agg.plan_total,
         "fact_total": agg.fact_total,
+        "month_deviation": agg.month_deviation,
         "month_cum": agg.month_cum,
         "done": agg.done,
         "remaining": agg.remaining,

@@ -69,6 +69,8 @@ class FormIn(BaseModel):
     vor: float = 0
     unit: str = ""
     prev_cumulative: float = 0
+    month_plan: float | None = None
+    month_fact: float | None = None
     weeks: list[WeekIn] = Field(default_factory=list)
     mpp_upload_id: str | None = None
 

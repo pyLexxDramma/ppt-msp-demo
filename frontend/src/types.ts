@@ -31,6 +31,10 @@ export type FormState = {
   vor: number
   unit: string
   prev_cumulative: number
+  /** Плановый объём на отчётный месяц (ввод). */
+  month_plan: number | null
+  /** Фактический объём за отчётный месяц (ввод). */
+  month_fact: number | null
   weeks: WeekRow[]
 }
 
@@ -42,6 +46,8 @@ export type WeekAgg = {
 export type Aggregates = {
   plan_total: number
   fact_total: number
+  /** Отклонение за месяц: план − факт (по полям месяца или сумме недель). */
+  month_deviation: number | null
   month_cum: number
   done: number
   remaining: number
@@ -107,6 +113,8 @@ export function defaultForm(): FormState {
     vor: 0,
     unit: '',
     prev_cumulative: 0,
+    month_plan: null,
+    month_fact: null,
     weeks: emptyWeeks(),
   }
 }
@@ -124,6 +132,8 @@ export function sampleFormForTests(): FormState {
     vor: 350,
     unit: 'шт',
     prev_cumulative: 0,
+    month_plan: 100,
+    month_fact: 55,
     weeks: [
       { plan: 20, fact: 10 },
       { plan: 20, fact: 30 },
