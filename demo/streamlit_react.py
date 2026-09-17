@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import base64
 from pathlib import Path
 
 import streamlit as st
@@ -14,8 +13,8 @@ from demo.payloads import prefill_payload, recalc_payload
 ROOT = Path(__file__).resolve().parent.parent
 DIST = ROOT / "frontend" / "dist"
 
-_MPP_CHUNKS_KEY = "ppt_mpp_b64_chunks"
 _MAX_MPP_BYTES = 40 * 1024 * 1024
+_UPLOADER_KEY = "ppt_mpp_host_upload"
 
 
 def dist_ready() -> bool:
@@ -35,8 +34,41 @@ def _prefill() -> dict:
 def _clear_mpp_upload() -> None:
     st.session_state.pop("ppt_source_mpp", None)
     st.session_state.pop("ppt_source_mpp_name", None)
-    st.session_state.pop(_MPP_CHUNKS_KEY, None)
+    st.session_state.pop("ppt_mpp_from_uploader", None)
     st.session_state["ppt_react_result"] = None
+
+
+def _render_host_mpp_uploader() -> None:
+    """Нативный uploader Streamlit — единственный надёжный путь для крупных .mpp на Cloud."""
+    st.markdown(
+        """
+<div class="ppt-mpp-host">
+  <div class="ppt-mpp-host-title">1. Исходный .mpp</div>
+  <div class="ppt-mpp-host-cap">Загрузите эталонный график MS Project — затем заполните объёмы и пересчитайте.</div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+    uploaded = st.file_uploader(
+        "Исходный .mpp",
+        type=["mpp"],
+        key=_UPLOADER_KEY,
+        label_visibility="collapsed",
+        help="До 40 МБ. Без файла форма ниже заблокирована.",
+    )
+    if uploaded is not None:
+        data = uploaded.getvalue()
+        if len(data) > _MAX_MPP_BYTES:
+            st.error(f"Файл больше {_MAX_MPP_BYTES // (1024 * 1024)} МБ")
+            _clear_mpp_upload()
+        else:
+            st.session_state["ppt_source_mpp"] = data
+            st.session_state["ppt_source_mpp_name"] = uploaded.name
+            st.session_state["ppt_mpp_from_uploader"] = True
+            st.caption(f"Загружен: **{uploaded.name}** ({len(data) // 1024} КБ)")
+    elif st.session_state.get("ppt_mpp_from_uploader"):
+        # Пользователь нажал «×» у uploader
+        _clear_mpp_upload()
 
 
 def render() -> None:
@@ -48,25 +80,46 @@ def render() -> None:
 <style>
   #MainMenu, footer, header[data-testid="stHeader"] { display: none; }
   .block-container {
-    max-width: 100% !important;
-    padding: 0 !important;
-    margin: 0 !important;
+    max-width: 1080px !important;
+    padding: 0.75rem 1rem 1rem !important;
+    margin: 0 auto !important;
   }
-  [data-testid="stVerticalBlock"] { gap: 0 !important; }
+  [data-testid="stVerticalBlock"] { gap: 0.5rem !important; }
   iframe {
     border: 0 !important;
     width: 100% !important;
+  }
+  .ppt-mpp-host-title {
+    font-weight: 700;
+    font-size: 0.95rem;
+    color: #0a1a2f;
+    margin: 0 0 0.25rem 0;
+  }
+  .ppt-mpp-host-cap {
+    font-size: 0.8rem;
+    color: #5b6473;
+    margin: 0 0 0.5rem 0;
+  }
+  [data-testid="stFileUploader"] {
+    background: #f9fbfd;
+    border: 1px solid #e4e7eb;
+    border-radius: 14px;
+    padding: 0.75rem 1rem;
   }
 </style>
 """,
         unsafe_allow_html=True,
     )
 
+    _render_host_mpp_uploader()
+
     prefill = {
         **_prefill(),
         "mpp_upload": {
             "ready": "ppt_source_mpp" in st.session_state,
             "filename": st.session_state.get("ppt_source_mpp_name"),
+            # React не шлёт файл через postMessage — только статус
+            "host_managed": True,
         },
     }
     result = st.session_state.get("ppt_react_result")
@@ -95,71 +148,16 @@ def render() -> None:
 
     if action == "mpp_clear":
         _clear_mpp_upload()
+        st.session_state.pop(_UPLOADER_KEY, None)
         st.rerun()
         return
 
-    if action == "mpp_upload_start":
-        st.session_state[_MPP_CHUNKS_KEY] = []
-        st.session_state.pop("ppt_source_mpp", None)
-        st.session_state["ppt_source_mpp_name"] = str(event.get("filename") or "source.mpp")
-        st.session_state["ppt_react_result"] = None
-        st.rerun()
-        return
-
-    if action == "mpp_upload_chunk":
-        try:
-            chunk = event.get("chunk") or ""
-            if not isinstance(chunk, str):
-                raise ValueError("Некорректный чанк .mpp")
-            parts: list[str] = st.session_state.setdefault(_MPP_CHUNKS_KEY, [])
-            # Оценка размера: 3/4 от длины base64
-            est = (sum(len(p) for p in parts) + len(chunk)) * 3 // 4
-            if est > _MAX_MPP_BYTES:
-                raise ValueError(f"Файл больше {_MAX_MPP_BYTES // (1024 * 1024)} МБ")
-            parts.append(chunk)
-        except Exception as exc:
-            st.session_state["ppt_react_error"] = str(exc)
-            st.session_state.pop(_MPP_CHUNKS_KEY, None)
-        st.rerun()
-        return
-
-    if action == "mpp_upload_finish":
-        try:
-            parts = st.session_state.get(_MPP_CHUNKS_KEY) or []
-            raw_b64 = "".join(parts)
-            if not raw_b64:
-                raise ValueError("Пустой файл .mpp")
-            data = base64.b64decode(raw_b64, validate=False)
-            if len(data) > _MAX_MPP_BYTES:
-                raise ValueError(f"Файл больше {_MAX_MPP_BYTES // (1024 * 1024)} МБ")
-            st.session_state["ppt_source_mpp"] = data
-            st.session_state["ppt_source_mpp_name"] = str(
-                st.session_state.get("ppt_source_mpp_name") or "source.mpp"
-            )
-            st.session_state.pop(_MPP_CHUNKS_KEY, None)
-            st.session_state["ppt_react_result"] = None
-        except Exception as exc:
-            st.session_state["ppt_react_error"] = str(exc)
-            st.session_state.pop(_MPP_CHUNKS_KEY, None)
-            st.session_state.pop("ppt_source_mpp", None)
-        st.rerun()
-        return
-
-    # Совместимость со старым фронтом (один большой base64)
-    if action == "mpp_upload":
-        try:
-            raw_b64 = event.get("mpp_b64") or ""
-            if not raw_b64:
-                raise ValueError("Пустой файл .mpp")
-            data = base64.b64decode(raw_b64)
-            if len(data) > _MAX_MPP_BYTES:
-                raise ValueError(f"Файл больше {_MAX_MPP_BYTES // (1024 * 1024)} МБ")
-            st.session_state["ppt_source_mpp"] = data
-            st.session_state["ppt_source_mpp_name"] = str(event.get("filename") or "source.mpp")
-            st.session_state.pop(_MPP_CHUNKS_KEY, None)
-            st.session_state["ppt_react_result"] = None
-        except Exception as exc:
-            st.session_state["ppt_react_error"] = str(exc)
+    # Старые chunked/base64 upload с iframe больше не используем
+    if action in {"mpp_upload", "mpp_upload_start", "mpp_upload_chunk", "mpp_upload_finish"}:
+        st.session_state["ppt_react_error"] = (
+            "Загрузите .mpp в блоке «1. Исходный .mpp» над формой "
+            "(нативный uploader Streamlit)."
+        )
         st.rerun()
         return
 

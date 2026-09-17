@@ -9,6 +9,7 @@ type Props = {
   uploadFn: (file: File) => Promise<{ upload_id: string; filename: string; size: number }>
 }
 
+/** Локальный/Vite picker. На Streamlit Cloud файл берётся нативным st.file_uploader. */
 export function MppUploadCard({
   filename,
   busy,

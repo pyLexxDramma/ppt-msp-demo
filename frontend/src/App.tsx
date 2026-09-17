@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { clearMppUpload, fetchPrefill, mppDownloadHref, postRecalc, resumePendingMppUpload, uploadMpp } from './api'
+import { clearMppUpload, fetchPrefill, mppDownloadHref, postRecalc, uploadMpp } from './api'
 import { CustomSelect } from './components/CustomSelect'
 import { FieldLabel } from './components/FieldLabel'
 import { MppFieldsDisclosure } from './components/MppFieldsDisclosure'
@@ -30,6 +30,7 @@ export default function App() {
   const [touched, setTouched] = useState(false)
   const [mppUploadId, setMppUploadId] = useState<string | null>(null)
   const [mppFilename, setMppFilename] = useState<string | null>(null)
+  const [hostManagedMpp, setHostManagedMpp] = useState(() => isStreamlitComponent())
   const toastTimer = useRef<number | null>(null)
 
   useEffect(() => {
@@ -55,31 +56,19 @@ export default function App() {
 
   useEffect(() => {
     if (!isStreamlitComponent()) return
-    let cancelled = false
-    ;(async () => {
-      try {
-        const resumed = await resumePendingMppUpload()
-        if (cancelled || !resumed) return
-        setMppUploadId(resumed.upload_id)
-        setMppFilename(resumed.filename)
-        showToast(`Файл загружен: ${resumed.filename}. Заполните форму.`, 'ok')
-      } catch (e) {
-        if (!cancelled) {
-          showToast(e instanceof Error ? e.message : 'Не удалось догрузить .mpp', 'warn')
-        }
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [showToast])
-
-  useEffect(() => {
-    if (!isStreamlitComponent()) return
     return subscribeArgs((args) => {
-      const upload = (args.prefill as { mpp_upload?: { ready?: boolean; filename?: string | null } } | undefined)
-        ?.mpp_upload
-      if (!upload?.ready) return
+      const upload = (
+        args.prefill as {
+          mpp_upload?: { ready?: boolean; filename?: string | null; host_managed?: boolean }
+        } | undefined
+      )?.mpp_upload
+      if (!upload) return
+      if (upload.host_managed) setHostManagedMpp(true)
+      if (!upload.ready) {
+        setMppUploadId(null)
+        setMppFilename(null)
+        return
+      }
       setMppFilename(upload.filename ?? 'source.mpp')
       setMppUploadId((prev) => prev || 'session')
     })
@@ -90,7 +79,7 @@ export default function App() {
     syncHeight()
     const t = window.setTimeout(syncHeight, 50)
     return () => window.clearTimeout(t)
-  }, [loading, result, form, toast, mppFilename, mppUploadId])
+  }, [loading, result, form, toast, mppFilename, mppUploadId, hostManagedMpp])
 
   useEffect(() => {
     let cancelled = false
@@ -101,6 +90,7 @@ export default function App() {
         setForm(defaultForm())
         if (data.months?.length) setMonths(data.months)
         if (data.options) setOptions(data.options)
+        if (data.mpp_upload?.host_managed) setHostManagedMpp(true)
         if (data.mpp_upload?.ready) {
           setMppFilename(data.mpp_upload.filename ?? 'source.mpp')
           setMppUploadId('session')
@@ -285,32 +275,36 @@ export default function App() {
       <main className="main">
         <div className="container">
           <MppFieldsDisclosure />
-          <MppUploadCard
-            filename={mppFilename}
-            busy={busy}
-            uploadFn={uploadMpp}
-            onUploaded={({ uploadId, filename }) => {
-              setMppUploadId(uploadId)
-              setMppFilename(filename)
-              setForm(defaultForm())
-              setTouched(false)
-              setResult(null)
-              showToast(`Файл загружен: ${filename}. Заполните форму.`, 'ok')
-            }}
-            onCleared={() => {
-              void clearMppUpload()
-              setMppUploadId(null)
-              setMppFilename(null)
-              setForm(defaultForm())
-              setTouched(false)
-              setResult(null)
-            }}
-            onError={(message) => showToast(message, 'warn')}
-          />
+          {hostManagedMpp ? null : (
+            <MppUploadCard
+              filename={mppFilename}
+              busy={busy}
+              uploadFn={uploadMpp}
+              onUploaded={({ uploadId, filename }) => {
+                setMppUploadId(uploadId)
+                setMppFilename(filename)
+                setForm(defaultForm())
+                setTouched(false)
+                setResult(null)
+                showToast(`Файл загружен: ${filename}. Заполните форму.`, 'ok')
+              }}
+              onCleared={() => {
+                void clearMppUpload()
+                setMppUploadId(null)
+                setMppFilename(null)
+                setForm(defaultForm())
+                setTouched(false)
+                setResult(null)
+              }}
+              onError={(message) => showToast(message, 'warn')}
+            />
+          )}
           <div className={`card form-block${formLocked ? ' is-locked' : ''}`}>
             {formLocked ? (
               <div className="form-lock-banner" role="status">
-                Сначала загрузите исходный .mpp — затем заполните поля вручную (без автоподстановки).
+                {hostManagedMpp
+                  ? 'Сначала загрузите исходный .mpp в блоке выше — затем заполните поля вручную.'
+                  : 'Сначала загрузите исходный .mpp — затем заполните поля вручную (без автоподстановки).'}
               </div>
             ) : null}
             <fieldset className="form-fieldset" disabled={formLocked}>

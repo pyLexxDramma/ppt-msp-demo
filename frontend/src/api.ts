@@ -43,6 +43,7 @@ export type PrefillResponse = {
   mpp_upload?: {
     ready?: boolean
     filename?: string | null
+    host_managed?: boolean
   }
 }
 
