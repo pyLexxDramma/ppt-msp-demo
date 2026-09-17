@@ -25,7 +25,7 @@ function Restart-Tunnel {
     Start-Sleep -Seconds 3
     $runLog = Join-Path $env:TEMP ("ppt-msp-cf-" + [guid]::NewGuid().ToString("N").Substring(0, 8) + ".log")
     Start-Process -FilePath $Cloudflared -ArgumentList @(
-        "tunnel", "--no-autoupdate", "--url", "http://127.0.0.1:$ApiPort"
+        "tunnel", "--no-autoupdate", "--protocol", "http2", "--url", "http://127.0.0.1:$ApiPort"
     ) -RedirectStandardError $runLog -WindowStyle Minimized
     $publicUrl = $null
     for ($i = 0; $i -lt 50; $i++) {
