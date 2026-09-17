@@ -30,7 +30,6 @@ export default function App() {
   const [touched, setTouched] = useState(false)
   const [mppUploadId, setMppUploadId] = useState<string | null>(null)
   const [mppFilename, setMppFilename] = useState<string | null>(null)
-  const [hostManagedMpp, setHostManagedMpp] = useState(() => isStreamlitComponent())
   const toastTimer = useRef<number | null>(null)
 
   useEffect(() => {
@@ -57,18 +56,9 @@ export default function App() {
   useEffect(() => {
     if (!isStreamlitComponent()) return
     return subscribeArgs((args) => {
-      const upload = (
-        args.prefill as {
-          mpp_upload?: { ready?: boolean; filename?: string | null; host_managed?: boolean }
-        } | undefined
-      )?.mpp_upload
-      if (!upload) return
-      if (upload.host_managed) setHostManagedMpp(true)
-      if (!upload.ready) {
-        setMppUploadId(null)
-        setMppFilename(null)
-        return
-      }
+      const upload = (args.prefill as { mpp_upload?: { ready?: boolean; filename?: string | null } } | undefined)
+        ?.mpp_upload
+      if (!upload?.ready) return
       setMppFilename(upload.filename ?? 'source.mpp')
       setMppUploadId((prev) => prev || 'session')
     })
@@ -79,7 +69,7 @@ export default function App() {
     syncHeight()
     const t = window.setTimeout(syncHeight, 50)
     return () => window.clearTimeout(t)
-  }, [loading, result, form, toast, mppFilename, mppUploadId, hostManagedMpp])
+  }, [loading, result, form, toast, mppFilename, mppUploadId])
 
   useEffect(() => {
     let cancelled = false
@@ -90,7 +80,6 @@ export default function App() {
         setForm(defaultForm())
         if (data.months?.length) setMonths(data.months)
         if (data.options) setOptions(data.options)
-        if (data.mpp_upload?.host_managed) setHostManagedMpp(true)
         if (data.mpp_upload?.ready) {
           setMppFilename(data.mpp_upload.filename ?? 'source.mpp')
           setMppUploadId('session')
@@ -275,36 +264,32 @@ export default function App() {
       <main className="main">
         <div className="container">
           <MppFieldsDisclosure />
-          {hostManagedMpp ? null : (
-            <MppUploadCard
-              filename={mppFilename}
-              busy={busy}
-              uploadFn={uploadMpp}
-              onUploaded={({ uploadId, filename }) => {
-                setMppUploadId(uploadId)
-                setMppFilename(filename)
-                setForm(defaultForm())
-                setTouched(false)
-                setResult(null)
-                showToast(`Файл загружен: ${filename}. Заполните форму.`, 'ok')
-              }}
-              onCleared={() => {
-                void clearMppUpload()
-                setMppUploadId(null)
-                setMppFilename(null)
-                setForm(defaultForm())
-                setTouched(false)
-                setResult(null)
-              }}
-              onError={(message) => showToast(message, 'warn')}
-            />
-          )}
+          <MppUploadCard
+            filename={mppFilename}
+            busy={busy}
+            uploadFn={uploadMpp}
+            onUploaded={({ uploadId, filename }) => {
+              setMppUploadId(uploadId)
+              setMppFilename(filename)
+              setForm(defaultForm())
+              setTouched(false)
+              setResult(null)
+              showToast(`Файл загружен: ${filename}. Заполните форму.`, 'ok')
+            }}
+            onCleared={() => {
+              void clearMppUpload()
+              setMppUploadId(null)
+              setMppFilename(null)
+              setForm(defaultForm())
+              setTouched(false)
+              setResult(null)
+            }}
+            onError={(message) => showToast(message, 'warn')}
+          />
           <div className={`card form-block${formLocked ? ' is-locked' : ''}`}>
             {formLocked ? (
               <div className="form-lock-banner" role="status">
-                {hostManagedMpp
-                  ? 'Сначала загрузите исходный .mpp в блоке выше — затем заполните поля вручную.'
-                  : 'Сначала загрузите исходный .mpp — затем заполните поля вручную (без автоподстановки).'}
+                Сначала загрузите исходный .mpp — затем заполните поля вручную (без автоподстановки).
               </div>
             ) : null}
             <fieldset className="form-fieldset" disabled={formLocked}>

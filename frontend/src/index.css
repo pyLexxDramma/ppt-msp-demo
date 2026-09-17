@@ -20,8 +20,8 @@
   --zone-amber-border: #f3d9ac;
   --zone-green-bg: #eaf7f0;
   --zone-green-border: #b7e1c7;
-  --radius: 14px;
-  --radius-sm: 9px;
+  --radius: 16px;
+  --radius-sm: 10px;
   --font-body: 'Manrope', 'Segoe UI', Arial, sans-serif;
   --font-mono: 'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace;
   --container-max: 1080px;
@@ -274,7 +274,7 @@ body {
   padding: 8px 10px;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
 }
 
 .formula-hint.compact {
@@ -328,7 +328,8 @@ body {
 
 .form-block {
   padding: 0;
-  overflow: visible;
+  overflow: hidden;
+  border-radius: var(--radius);
 }
 
 .form-section {
@@ -343,6 +344,7 @@ body {
 .form-section.form-actions {
   padding: 12px 16px;
   background: var(--surface-soft);
+  border-radius: 0 0 var(--radius) var(--radius);
 }
 
 .form-block .settings-card {
@@ -468,7 +470,7 @@ body {
   width: max-content;
   max-width: 240px;
   padding: 8px 10px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--line);
   background: var(--surface);
   color: var(--ink-soft);
@@ -592,7 +594,7 @@ input.invalid,
   background: transparent;
   text-align: left;
   padding: 8px 10px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   font-family: var(--font-body);
   font-size: 13px;
   color: var(--ink);
@@ -819,7 +821,7 @@ input.invalid,
   width: 100%;
   border: 1px solid var(--line);
   background: var(--surface);
-  border-radius: 7px;
+  border-radius: var(--radius-sm);
   padding: 7px 4px;
   text-align: center;
   font-family: var(--font-mono);
@@ -840,7 +842,7 @@ input.invalid,
   width: 100%;
   border: 1px solid transparent;
   background: var(--surface);
-  border-radius: 7px;
+  border-radius: var(--radius-sm);
   padding: 7px 4px;
   text-align: center;
   font-family: var(--font-mono);
@@ -864,7 +866,7 @@ input.invalid,
 
 .dashed-box {
   border: 1.5px dashed var(--zone-amber-border);
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   padding: 10px 12px 12px;
   margin-top: 2px;
 }
@@ -966,7 +968,7 @@ input.invalid,
 
 .stat input:focus {
   outline: 1px solid var(--blue);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 .stat .val.pos {
@@ -1088,9 +1090,9 @@ input.invalid,
 }
 
 .form-lock-banner {
-  margin: 0 0 12px;
+  margin: 12px 12px 0;
   padding: 10px 12px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--zone-amber-border);
   background: var(--zone-amber-bg);
   color: var(--ink-soft);
@@ -1130,7 +1132,7 @@ input.invalid,
 .mpp-upload-status {
   margin-top: 8px;
   padding: 8px 10px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   border: 1px dashed var(--line);
   background: var(--surface-soft);
   font-size: 12.5px;
@@ -1157,7 +1159,7 @@ input.invalid,
   padding: 0;
   background: transparent;
   border: none;
-  border-radius: 0;
+  border-radius: var(--radius-sm);
 }
 
 .action-bar .hint {
@@ -1169,6 +1171,7 @@ input.invalid,
   padding: 0;
   overflow: hidden;
   position: relative;
+  border-radius: var(--radius);
 }
 
 .result-panel.is-busy {
@@ -1248,7 +1251,7 @@ input.invalid,
 .result-change {
   margin: 0 14px 12px;
   padding: 8px 10px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   border: 1px dashed var(--line);
   background: var(--surface-soft);
   font-size: 12px;
@@ -1284,7 +1287,7 @@ input.invalid,
   max-height: 320px;
   overflow: auto;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: var(--surface);
 }
 
@@ -1442,7 +1445,7 @@ input.invalid,
   background: var(--navy);
   color: #fff;
   padding: 12px 16px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   font-size: 13px;
   line-height: 1.35;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
@@ -1489,7 +1492,7 @@ input.invalid,
 .alert {
   margin-top: 10px;
   padding: 10px 12px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   font-size: 12.5px;
   border: 1px solid var(--line);
   background: var(--surface-soft);

@@ -6,10 +6,14 @@ type StreamlitArgs = {
 }
 
 export type ComponentEvent =
-  | { action: 'recalc'; id: string; form: unknown; mpp_upload_id?: string | null }
-  | { action: 'mpp_upload_start'; id: string; filename: string; size: number }
-  | { action: 'mpp_upload_chunk'; id: string; chunk: string; index: number }
-  | { action: 'mpp_upload_finish'; id: string }
+  | {
+      action: 'recalc'
+      id: string
+      form: unknown
+      mpp_upload_id?: string | null
+      mpp_b64?: string | null
+      mpp_filename?: string | null
+    }
   | { action: 'mpp_clear'; id: string }
 
 type ArgsListener = (args: StreamlitArgs) => void
