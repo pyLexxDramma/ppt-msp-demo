@@ -477,7 +477,6 @@ export default function App() {
               <div className="card-head-row">
                 <div>
                   <p className="card-title">Факт накопленный с начала</p>
-                  <p className="card-sub">п. 4.1.1 ТЗ</p>
                 </div>
               </div>
               <div className="stat-row">
@@ -537,25 +536,6 @@ export default function App() {
                     'Сохранить и пересчитать'
                   )}
                 </button>
-                {mppHref ? (
-                  <a className="btn btn-outline" href={mppHref} download="msp_updated.mpp">
-                    Скачать .mpp
-                  </a>
-                ) : (
-                  <button
-                    type="button"
-                    className="btn btn-outline"
-                    onClick={() =>
-                      showToast(
-                        result?.mpp_error ||
-                          'Файл .mpp собирается только на Windows с MS Project. Запустите «Запуск МПП демо».',
-                        'warn',
-                      )
-                    }
-                  >
-                    Скачать .mpp
-                  </button>
-                )}
               </div>
             </div>
           </div>
@@ -625,6 +605,19 @@ export default function App() {
                 Начало {beforeStart} → {afterStart}
                 {' · '}
                 Окончание {beforeFinish} → {afterFinish}
+              </div>
+
+              <div className="result-footer">
+                {mppHref ? (
+                  <a className="btn btn-primary" href={mppHref} download="msp_updated.mpp">
+                    Скачать .mpp
+                  </a>
+                ) : (
+                  <p className="result-mpp-note">
+                    {result.mpp_error ||
+                      'Расчёт готов. Файл .mpp недоступен на этой машине расчёта (нужны MS Project и pywin32).'}
+                  </p>
+                )}
               </div>
             </div>
           ) : null}
