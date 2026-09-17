@@ -27,8 +27,16 @@ async function resolveApiBase(): Promise<string> {
         .map((s) => s.trim())
         .find((s) => s.startsWith('https://'))
       if (line) {
-        cachedBase = line.replace(/\/$/, '')
-        return cachedBase
+        const candidate = line.replace(/\/$/, '')
+        try {
+          const health = await fetch(`${candidate}/api/health`, { cache: 'no-store' })
+          if (health.ok) {
+            cachedBase = candidate
+            return candidate
+          }
+        } catch {
+          /* хост недоступен — локальный /api */
+        }
       }
     }
   } catch {

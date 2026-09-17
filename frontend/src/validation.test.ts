@@ -13,6 +13,7 @@ const options: FormOptions = {
       name: 'Фундаменты сборные',
       unit: 'шт',
       vor: 350,
+      vor_fact: 0,
       project_id: '0feb8a44-a0f4-11ef-af7f-0050560219d5',
     },
   ],

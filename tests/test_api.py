@@ -67,6 +67,12 @@ def test_recalc_ok_shape() -> None:
     assert "update" in data
     assert "after" in data["update"]
     assert "before" in data["update"]
+    assert isinstance(data.get("schedule_before"), list)
+    assert isinstance(data.get("schedule_after"), list)
+    assert data["schedule_before"]
+    assert data["schedule_after"]
+    changed = [r for r in data["schedule_after"] if r.get("Ид") == "6"]
+    assert changed and changed[0].get("Изменено")
     if data["downloads"]["mpp"]:
         assert data["mpp_error"] in (None, "")
     else:

@@ -45,12 +45,22 @@ def load_form_options(csv_path: Path | None = None) -> dict[str, Any]:
                 continue
             if vor <= 0 or not tid:
                 continue
+            vor_fact_raw = (row.get("ВОР_факт") or "").strip()
+            try:
+                vor_fact = (
+                    float(vor_fact_raw.replace(" ", "").replace(",", "."))
+                    if vor_fact_raw
+                    else 0.0
+                )
+            except ValueError:
+                vor_fact = 0.0
             tasks.append(
                 {
                     "id": tid,
                     "name": name,
                     "unit": unit or "шт",
                     "vor": vor,
+                    "vor_fact": vor_fact,
                     "project_id": pid,
                 }
             )
@@ -79,9 +89,16 @@ def load_form_options(csv_path: Path | None = None) -> dict[str, Any]:
                 "name": "Фундаменты сборные",
                 "unit": "шт",
                 "vor": 350.0,
+                "vor_fact": 0.0,
                 "project_id": projects[0]["id"],
             }
         ]
+
+    # Leaf-строки CSV часто без ID_проекта — берём единственный/первый объект
+    default_pid = projects[0]["id"]
+    for t in tasks:
+        if not t.get("project_id"):
+            t["project_id"] = default_pid
 
     year_now = 2026
     years = list(range(year_now - 2, year_now + 6))

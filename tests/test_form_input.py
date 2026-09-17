@@ -17,10 +17,10 @@ from demo.form_input import (
 def test_aggregates_mockup_default() -> None:
     state = FormState()
     agg = compute_aggregates(state)
-    # 10+30+0+15 = 55 факт; prev 150 → done 205; vor 350 → rest 145
+    # 10+30+0+15 = 55 факт; prev из эталона по умолчанию 0 → done 55; vor 350 → rest 295
     assert agg.fact_total == 55
-    assert agg.done == 205
-    assert agg.remaining == 145
+    assert agg.done == 55
+    assert agg.remaining == 295
     assert agg.plan_total == 100
     assert form_ready_for_recalc(state) is True
 

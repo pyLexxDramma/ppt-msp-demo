@@ -20,3 +20,5 @@ def test_task_option_shape() -> None:
     task = opts["tasks"][0]
     assert "id" in task and "name" in task and "unit" in task
     assert "vor" in task and "project_id" in task
+    assert "vor_fact" in task
+    assert isinstance(task["vor_fact"], (int, float))

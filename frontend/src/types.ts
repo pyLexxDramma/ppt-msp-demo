@@ -50,6 +50,8 @@ export type Aggregates = {
   rows: WeekAgg[]
 }
 
+export type ScheduleRow = Record<string, string>
+
 export type RecalcResult = {
   job_id: string
   status: 'progress' | 'done' | 'over' | string
@@ -81,6 +83,11 @@ export type RecalcResult = {
     before?: Record<string, string>
     after: Record<string, string>
   }
+  /** Полный график до пересчёта (legacy-таблицы). */
+  schedule_before?: ScheduleRow[]
+  /** Полный график после пересчёта. */
+  schedule_after?: ScheduleRow[]
+  schedule_cols?: string[]
 }
 
 export function defaultForm(): FormState {
@@ -94,7 +101,7 @@ export function defaultForm(): FormState {
     task_id: '6',
     vor: 350,
     unit: 'шт',
-    prev_cumulative: 150,
+    prev_cumulative: 0,
     weeks: [
       { plan: 20, fact: 10 },
       { plan: 20, fact: 30 },

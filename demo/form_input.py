@@ -44,7 +44,7 @@ class FormState:
     task_id: str = "6"
     vor: float = 350.0
     unit: str = "шт"
-    prev_cumulative: float = 150.0
+    prev_cumulative: float = 0.0
     weeks: list[WeekRow] = field(default_factory=list)
 
     def __post_init__(self) -> None:

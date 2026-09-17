@@ -10,6 +10,7 @@ from typing import Any
 from .build_update import TaskUpdate, apply_updates_to_csv, load_msp_csv
 from .form_input import FormAggregates, FormState, run_mode1_for_form, status_for_aggregates
 from .mpp_writer import apply_updates_to_mpp, project_available
+from .schedule_tables import build_schedule_after, build_schedule_before
 from .xml_export import rows_to_mspdi_xml
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -51,13 +52,26 @@ def find_csv_row_by_id(rows: list[dict[str, str]], task_id: str) -> dict[str, st
     return None
 
 
+def prev_cumulative_from_row(row: dict[str, str] | None) -> float | None:
+    """Накоплено до периода = ВОР_факт из эталона (пусто → 0)."""
+    if row is None:
+        return None
+    raw = str(row.get("ВОР_факт") or "").strip()
+    if not raw:
+        return 0.0
+    try:
+        return float(raw.replace(" ", "").replace(",", "."))
+    except ValueError:
+        return None
+
+
 def silent_prefill_from_csv(
     state: FormState | None = None,
     *,
     csv_path: Path | None = None,
     task_id: str = DEFAULT_TASK_ID,
 ) -> FormState:
-    """Префилл названия/ВОР/ед.изм. из sample CSV (скрыто, без UI upload)."""
+    """Префилл названия/ВОР/ед.изм./накоплено из sample CSV (прокси MPP)."""
     base = state or FormState()
     path = csv_path or SAMPLE_CSV
     if not path.exists():
@@ -88,6 +102,9 @@ def silent_prefill_from_csv(
     pid = (row.get("ID_проекта") or "").strip()
     if pid:
         base.project_id = pid
+    pc = prev_cumulative_from_row(row)
+    if pc is not None:
+        base.prev_cumulative = pc
     return base
 
 
@@ -171,6 +188,8 @@ class PipelineResult:
     mpp_bytes: bytes | None = None
     mpp_error: str | None = None
     com_available: bool = False
+    schedule_before: list[dict[str, str]] | None = None
+    schedule_after: list[dict[str, str]] | None = None
 
 
 def run_form_pipeline(
@@ -192,8 +211,16 @@ def run_form_pipeline(
         fieldnames, rows = load_msp_csv(csv_p)
         before_row = find_csv_row_by_id(rows, state.task_id)
 
+    # Накоплено до периода всегда из эталона, не из ручного ввода формы
+    pc = prev_cumulative_from_row(before_row) if before_row is not None else None
+    if pc is not None:
+        state.prev_cumulative = pc
+
     update, agg, result = build_task_update(state, before_row=before_row)
     updates = [update]
+
+    schedule_before = build_schedule_before(rows) if rows else []
+    schedule_after = build_schedule_after(rows, updates) if rows else []
 
     csv_bytes = None
     xml_bytes = None
@@ -229,4 +256,6 @@ def run_form_pipeline(
         mpp_bytes=mpp_bytes,
         mpp_error=mpp_error,
         com_available=com_ok,
+        schedule_before=schedule_before,
+        schedule_after=schedule_after,
     )

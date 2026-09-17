@@ -36,8 +36,8 @@ describe('formLogic aggregates', () => {
   it('matches Mode1 input volumes for default form', () => {
     const agg = computeAggregates(defaultForm())
     expect(agg.fact_total).toBe(55)
-    expect(agg.done).toBe(205)
-    expect(agg.remaining).toBe(145)
+    expect(agg.done).toBe(55)
+    expect(agg.remaining).toBe(295)
     expect(formReady(defaultForm())).toBe(true)
   })
 })

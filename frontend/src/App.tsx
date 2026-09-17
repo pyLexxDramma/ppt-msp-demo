@@ -3,6 +3,7 @@ import { fetchPrefill, mppDownloadHref, postRecalc } from './api'
 import { CustomSelect } from './components/CustomSelect'
 import { FieldLabel } from './components/FieldLabel'
 import { MppFieldsDisclosure } from './components/MppFieldsDisclosure'
+import { ScheduleTable } from './components/ScheduleTable'
 import { computeAggregates, fmt, periodLabel, signedFmt } from './formLogic'
 import { FIELD_HELP, type FormOptions } from './options'
 import { isStreamlitComponent, syncHeight } from './streamlitBridge'
@@ -122,6 +123,7 @@ export default function App() {
       task_name: t.name,
       unit: t.unit || prev.unit,
       vor: t.vor > 0 ? t.vor : prev.vor,
+      prev_cumulative: Number.isFinite(t.vor_fact) ? t.vor_fact : 0,
       project_id: t.project_id || prev.project_id,
       project: p?.name || prev.project,
     }))
@@ -139,13 +141,8 @@ export default function App() {
       setResult(data)
       if (data.downloads.mpp) {
         showToast('Пересчёт завершён. Можно скачать .mpp', 'ok')
-      } else {
-        showToast(
-          data.mpp_error ||
-            'Пересчёт завершён. Файл .mpp недоступен на этой машине расчёта.',
-          'warn',
-        )
       }
+      // Без .mpp: результат в панели, красная заметка вместо кнопки — тост не дублируем.
     } catch (e) {
       showToast(e instanceof Error ? e.message : 'Ошибка пересчёта', 'warn')
     } finally {
@@ -491,11 +488,11 @@ export default function App() {
                       <input
                         id="sPrevCum"
                         type="number"
-                        className={showErr('prev_cumulative') ? 'invalid' : undefined}
+                        readOnly
+                        disabled
+                        className={`readonly-input${showErr('prev_cumulative') ? ' invalid' : ''}`}
                         value={form.prev_cumulative}
-                        onChange={(e) =>
-                          patch('prev_cumulative', Number(e.target.value) || 0)
-                        }
+                        aria-label="Накоплено до периода из эталона"
                       />
                     </div>
                   </FieldLabel>
@@ -606,6 +603,22 @@ export default function App() {
                 {' · '}
                 Окончание {beforeFinish} → {afterFinish}
               </div>
+
+              {(result.schedule_before?.length || result.schedule_after?.length) ? (
+                <div className="result-schedule-tables">
+                  <ScheduleTable
+                    title="До изменений"
+                    rows={result.schedule_before ?? []}
+                    cols={result.schedule_cols}
+                  />
+                  <ScheduleTable
+                    title="После изменений"
+                    rows={result.schedule_after ?? []}
+                    cols={result.schedule_cols}
+                    highlightChanged
+                  />
+                </div>
+              ) : null}
 
               <div className="result-footer">
                 {mppHref ? (

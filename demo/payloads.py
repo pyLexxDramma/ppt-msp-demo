@@ -14,6 +14,7 @@ from demo.form_input import (
 )
 from demo.form_pipeline import run_form_pipeline, silent_prefill_from_csv
 from demo.mpp_writer import project_available
+from demo.schedule_tables import SCHEDULE_COLS
 
 
 def agg_dict(state: FormState) -> dict[str, Any]:
@@ -50,12 +51,12 @@ def build_recalc(
     pipe = run_form_pipeline(state, write_mpp=write_mpp)
     job_id = str(uuid.uuid4())
     m1 = pipe.schedule.get("mode1") or {}
-    mpp_error = (
-        "Расчёт готов. Файл .mpp недоступен на этой машине расчёта "
-        "(нужны MS Project и pywin32)."
-        if pipe.mpp_error and not pipe.mpp_bytes
-        else pipe.mpp_error
-    )
+    mpp_error = pipe.mpp_error
+    if pipe.mpp_bytes is None and not pipe.com_available:
+        mpp_error = mpp_error or (
+            "Расчёт готов. Файл .mpp недоступен на этой машине расчёта "
+            "(нужны MS Project и pywin32)."
+        )
     payload = {
         "job_id": job_id,
         "status": pipe.status,
@@ -74,6 +75,9 @@ def build_recalc(
             "before": pipe.update.before,
             "after": pipe.update.after,
         },
+        "schedule_before": pipe.schedule_before or [],
+        "schedule_after": pipe.schedule_after or [],
+        "schedule_cols": list(SCHEDULE_COLS),
     }
     files = {"csv": pipe.csv_bytes, "xml": pipe.xml_bytes, "mpp": pipe.mpp_bytes}
     return payload, files
