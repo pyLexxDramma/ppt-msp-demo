@@ -14,6 +14,9 @@ from demo.payloads import prefill_payload, recalc_payload
 ROOT = Path(__file__).resolve().parent.parent
 DIST = ROOT / "frontend" / "dist"
 
+_MPP_CHUNKS_KEY = "ppt_mpp_b64_chunks"
+_MAX_MPP_BYTES = 40 * 1024 * 1024
+
 
 def dist_ready() -> bool:
     return (DIST / "index.html").is_file()
@@ -27,6 +30,13 @@ def _component():
 @st.cache_data
 def _prefill() -> dict:
     return prefill_payload()
+
+
+def _clear_mpp_upload() -> None:
+    st.session_state.pop("ppt_source_mpp", None)
+    st.session_state.pop("ppt_source_mpp_name", None)
+    st.session_state.pop(_MPP_CHUNKS_KEY, None)
+    st.session_state["ppt_react_result"] = None
 
 
 def render() -> None:
@@ -84,19 +94,69 @@ def render() -> None:
     st.session_state["ppt_react_error"] = None
 
     if action == "mpp_clear":
+        _clear_mpp_upload()
+        st.rerun()
+        return
+
+    if action == "mpp_upload_start":
+        st.session_state[_MPP_CHUNKS_KEY] = []
         st.session_state.pop("ppt_source_mpp", None)
-        st.session_state.pop("ppt_source_mpp_name", None)
+        st.session_state["ppt_source_mpp_name"] = str(event.get("filename") or "source.mpp")
         st.session_state["ppt_react_result"] = None
         st.rerun()
         return
 
+    if action == "mpp_upload_chunk":
+        try:
+            chunk = event.get("chunk") or ""
+            if not isinstance(chunk, str):
+                raise ValueError("Некорректный чанк .mpp")
+            parts: list[str] = st.session_state.setdefault(_MPP_CHUNKS_KEY, [])
+            # Оценка размера: 3/4 от длины base64
+            est = (sum(len(p) for p in parts) + len(chunk)) * 3 // 4
+            if est > _MAX_MPP_BYTES:
+                raise ValueError(f"Файл больше {_MAX_MPP_BYTES // (1024 * 1024)} МБ")
+            parts.append(chunk)
+        except Exception as exc:
+            st.session_state["ppt_react_error"] = str(exc)
+            st.session_state.pop(_MPP_CHUNKS_KEY, None)
+        st.rerun()
+        return
+
+    if action == "mpp_upload_finish":
+        try:
+            parts = st.session_state.get(_MPP_CHUNKS_KEY) or []
+            raw_b64 = "".join(parts)
+            if not raw_b64:
+                raise ValueError("Пустой файл .mpp")
+            data = base64.b64decode(raw_b64, validate=False)
+            if len(data) > _MAX_MPP_BYTES:
+                raise ValueError(f"Файл больше {_MAX_MPP_BYTES // (1024 * 1024)} МБ")
+            st.session_state["ppt_source_mpp"] = data
+            st.session_state["ppt_source_mpp_name"] = str(
+                st.session_state.get("ppt_source_mpp_name") or "source.mpp"
+            )
+            st.session_state.pop(_MPP_CHUNKS_KEY, None)
+            st.session_state["ppt_react_result"] = None
+        except Exception as exc:
+            st.session_state["ppt_react_error"] = str(exc)
+            st.session_state.pop(_MPP_CHUNKS_KEY, None)
+            st.session_state.pop("ppt_source_mpp", None)
+        st.rerun()
+        return
+
+    # Совместимость со старым фронтом (один большой base64)
     if action == "mpp_upload":
         try:
             raw_b64 = event.get("mpp_b64") or ""
             if not raw_b64:
                 raise ValueError("Пустой файл .mpp")
-            st.session_state["ppt_source_mpp"] = base64.b64decode(raw_b64)
+            data = base64.b64decode(raw_b64)
+            if len(data) > _MAX_MPP_BYTES:
+                raise ValueError(f"Файл больше {_MAX_MPP_BYTES // (1024 * 1024)} МБ")
+            st.session_state["ppt_source_mpp"] = data
             st.session_state["ppt_source_mpp_name"] = str(event.get("filename") or "source.mpp")
+            st.session_state.pop(_MPP_CHUNKS_KEY, None)
             st.session_state["ppt_react_result"] = None
         except Exception as exc:
             st.session_state["ppt_react_error"] = str(exc)
@@ -124,14 +184,17 @@ def render() -> None:
             try:
                 payload = remote_recalc(
                     state.to_dict(),
-                    mpp_bytes=mpp_bytes,
+                    mpp_bytes=mpp_bytes if isinstance(mpp_bytes, (bytes, bytearray)) else None,
                     mpp_upload_id=mpp_upload_id if isinstance(mpp_upload_id, str) else None,
                 )
             except Exception:
                 payload = None
 
         if not payload:
-            payload = recalc_payload(state, mpp_bytes=mpp_bytes)
+            payload = recalc_payload(
+                state,
+                mpp_bytes=mpp_bytes if isinstance(mpp_bytes, (bytes, bytearray)) else None,
+            )
 
         if not payload.get("downloads", {}).get("mpp"):
             payload["mpp_error"] = payload.get("mpp_error") or (

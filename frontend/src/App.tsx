@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { clearMppUpload, fetchPrefill, mppDownloadHref, postRecalc, uploadMpp } from './api'
+import { clearMppUpload, fetchPrefill, mppDownloadHref, postRecalc, resumePendingMppUpload, uploadMpp } from './api'
 import { CustomSelect } from './components/CustomSelect'
 import { FieldLabel } from './components/FieldLabel'
 import { MppFieldsDisclosure } from './components/MppFieldsDisclosure'
@@ -52,6 +52,27 @@ export default function App() {
       if (toastTimer.current != null) window.clearTimeout(toastTimer.current)
     }
   }, [])
+
+  useEffect(() => {
+    if (!isStreamlitComponent()) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const resumed = await resumePendingMppUpload()
+        if (cancelled || !resumed) return
+        setMppUploadId(resumed.upload_id)
+        setMppFilename(resumed.filename)
+        showToast(`Файл загружен: ${resumed.filename}. Заполните форму.`, 'ok')
+      } catch (e) {
+        if (!cancelled) {
+          showToast(e instanceof Error ? e.message : 'Не удалось догрузить .mpp', 'warn')
+        }
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [showToast])
 
   useEffect(() => {
     if (!isStreamlitComponent()) return

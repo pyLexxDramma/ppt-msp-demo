@@ -7,7 +7,9 @@ type StreamlitArgs = {
 
 export type ComponentEvent =
   | { action: 'recalc'; id: string; form: unknown; mpp_upload_id?: string | null }
-  | { action: 'mpp_upload'; id: string; filename: string; mpp_b64: string }
+  | { action: 'mpp_upload_start'; id: string; filename: string; size: number }
+  | { action: 'mpp_upload_chunk'; id: string; chunk: string; index: number }
+  | { action: 'mpp_upload_finish'; id: string }
   | { action: 'mpp_clear'; id: string }
 
 type ArgsListener = (args: StreamlitArgs) => void
@@ -85,10 +87,12 @@ export function syncHeight(): void {
 }
 
 export function setComponentValue(value: ComponentEvent): void {
+  ensureListener()
   post('streamlit:setComponentValue', { value })
 }
 
 export function subscribeArgs(fn: ArgsListener): () => void {
+  ensureListener()
   listeners.add(fn)
   if (lastArgs) fn(lastArgs)
   return () => {
@@ -117,7 +121,33 @@ export function waitForStreamlitArgs(timeoutMs = 15000): Promise<StreamlitArgs> 
   })
 }
 
+/** Ждём echo request_id после любого действия компонента (чанк / clear / start). */
+export function waitForComponentAck(requestId: string, timeoutMs = 45000): Promise<StreamlitArgs> {
+  ensureListener()
+  if (lastArgs?.request_id === requestId) {
+    if (lastArgs.error) return Promise.reject(new Error(lastArgs.error))
+    return Promise.resolve(lastArgs)
+  }
+  return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(() => {
+      off()
+      reject(new Error('Streamlit не подтвердил шаг загрузки'))
+    }, timeoutMs)
+    const off = subscribeArgs((args) => {
+      if (args.request_id !== requestId) return
+      window.clearTimeout(timer)
+      off()
+      if (args.error) {
+        reject(new Error(args.error))
+        return
+      }
+      resolve(args)
+    })
+  })
+}
+
 export function waitForRecalcResponse(requestId: string, timeoutMs = 30000): Promise<StreamlitArgs> {
+  ensureListener()
   if (lastArgs?.request_id === requestId && (lastArgs.result || lastArgs.error)) {
     return Promise.resolve(lastArgs)
   }
@@ -137,7 +167,8 @@ export function waitForRecalcResponse(requestId: string, timeoutMs = 30000): Pro
 }
 
 /** Ждём, пока Streamlit подтвердит сохранение .mpp в session_state. */
-export function waitForMppUploadAck(requestId: string, timeoutMs = 60000): Promise<StreamlitArgs> {
+export function waitForMppUploadAck(requestId: string, timeoutMs = 90000): Promise<StreamlitArgs> {
+  ensureListener()
   return new Promise((resolve, reject) => {
     const timer = window.setTimeout(() => {
       off()

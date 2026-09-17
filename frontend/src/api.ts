@@ -1,6 +1,7 @@
 import {
   isStreamlitComponent,
   setComponentValue,
+  waitForComponentAck,
   waitForMppUploadAck,
   waitForRecalcResponse,
   waitForStreamlitArgs,
@@ -11,7 +12,28 @@ import type { FormOptions } from './options'
 const DISCOVERY_URL =
   'https://raw.githubusercontent.com/pyLexxDramma/ppt-msp-demo/main/sample_data/windows_api_url.txt'
 
+/** ~90KB сырых байт → ~120KB base64 — безопасно для postMessage Streamlit. */
+const STREAMLIT_CHUNK_CHARS = 120_000
+const MAX_MPP_BYTES = 40 * 1024 * 1024
+
+type PendingUpload = {
+  uploadId: string
+  filename: string
+  size: number
+  b64: string
+  /** Следующий индекс чанка (0 = ещё нужен start). */
+  nextIndex: number
+  phase: 'start' | 'chunks' | 'finish'
+}
+
 let cachedBase: string | null | undefined
+/** In-memory resume после remount React внутри того же iframe. */
+let memoryPending: PendingUpload | null = null
+let streamlitUploadInFlight: Promise<{
+  upload_id: string
+  filename: string
+  size: number
+}> | null = null
 
 export type PrefillResponse = {
   form: FormState
@@ -24,6 +46,28 @@ export type PrefillResponse = {
   }
 }
 
+function readPending(): PendingUpload | null {
+  return memoryPending
+}
+
+function writePending(p: PendingUpload | null): void {
+  memoryPending = p
+}
+
+async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init: RequestInit | undefined,
+  timeoutMs: number,
+): Promise<Response> {
+  const ctrl = new AbortController()
+  const timer = window.setTimeout(() => ctrl.abort(), timeoutMs)
+  try {
+    return await fetch(input, { ...init, signal: ctrl.signal })
+  } finally {
+    window.clearTimeout(timer)
+  }
+}
+
 async function resolveApiBase(): Promise<string> {
   if (cachedBase !== undefined) return cachedBase || ''
   const fromEnv = String(import.meta.env.VITE_API_URL || '').trim().replace(/\/$/, '')
@@ -32,7 +76,7 @@ async function resolveApiBase(): Promise<string> {
     return fromEnv
   }
   try {
-    const res = await fetch(DISCOVERY_URL, { cache: 'no-store' })
+    const res = await fetchWithTimeout(DISCOVERY_URL, { cache: 'no-store' }, 8000)
     if (res.ok) {
       const line = (await res.text())
         .split('\n')
@@ -41,7 +85,11 @@ async function resolveApiBase(): Promise<string> {
       if (line) {
         const candidate = line.replace(/\/$/, '')
         try {
-          const health = await fetch(`${candidate}/api/health`, { cache: 'no-store' })
+          const health = await fetchWithTimeout(
+            `${candidate}/api/health`,
+            { cache: 'no-store' },
+            4000,
+          )
           if (health.ok) {
             cachedBase = candidate
             return candidate
@@ -97,49 +145,159 @@ export async function fetchPrefill(): Promise<PrefillResponse> {
   return res.json()
 }
 
+async function uploadMppHttp(file: File, base: string): Promise<{
+  upload_id: string
+  filename: string
+  size: number
+}> {
+  const body = new FormData()
+  body.append('file', file)
+  const res = await fetchWithTimeout(
+    apiPath('/api/mpp/upload', base),
+    { method: 'POST', body },
+    90_000,
+  )
+  if (!res.ok) throw new Error(await parseError(res))
+  return res.json()
+}
+
+/** Продолжает chunked-загрузку (в т.ч. после remount React в том же iframe). */
+async function continueStreamlitUpload(pending: PendingUpload): Promise<{
+  upload_id: string
+  filename: string
+  size: number
+}> {
+  if (streamlitUploadInFlight) return streamlitUploadInFlight
+
+  streamlitUploadInFlight = (async () => {
+    let state = { ...pending }
+
+    if (state.phase === 'start') {
+      const id = crypto.randomUUID()
+      setComponentValue({
+        action: 'mpp_upload_start',
+        id,
+        filename: state.filename,
+        size: state.size,
+      })
+      await waitForComponentAck(id)
+      state = { ...state, phase: 'chunks', nextIndex: 0 }
+      writePending(state)
+    }
+
+    if (state.phase === 'chunks') {
+      if (!state.b64) {
+        writePending(null)
+        throw new Error('Пустой файл .mpp')
+      }
+      while (state.nextIndex * STREAMLIT_CHUNK_CHARS < state.b64.length) {
+        const from = state.nextIndex * STREAMLIT_CHUNK_CHARS
+        const chunk = state.b64.slice(from, from + STREAMLIT_CHUNK_CHARS)
+        const id = crypto.randomUUID()
+        setComponentValue({
+          action: 'mpp_upload_chunk',
+          id,
+          chunk,
+          index: state.nextIndex,
+        })
+        await waitForComponentAck(id)
+        state = { ...state, nextIndex: state.nextIndex + 1 }
+        writePending(state)
+      }
+      state = { ...state, phase: 'finish' }
+      writePending(state)
+    }
+
+    if (state.phase === 'finish') {
+      const id = crypto.randomUUID()
+      setComponentValue({ action: 'mpp_upload_finish', id })
+      await waitForMppUploadAck(id)
+      writePending(null)
+    }
+
+    return {
+      upload_id: state.uploadId,
+      filename: state.filename,
+      size: state.size,
+    }
+  })().finally(() => {
+    streamlitUploadInFlight = null
+  })
+
+  return streamlitUploadInFlight
+}
+
+async function uploadMppViaStreamlit(file: File): Promise<{
+  upload_id: string
+  filename: string
+  size: number
+}> {
+  if (file.size > MAX_MPP_BYTES) {
+    throw new Error(`Файл больше ${MAX_MPP_BYTES / (1024 * 1024)} МБ`)
+  }
+  const b64 = await fileToBase64(file)
+  const pending: PendingUpload = {
+    uploadId: crypto.randomUUID(),
+    filename: file.name,
+    size: file.size,
+    b64,
+    nextIndex: 0,
+    phase: 'start',
+  }
+  writePending(pending)
+  return continueStreamlitUpload(pending)
+}
+
+/** Если iframe пересоздали mid-upload — дожимаем из sessionStorage. */
+export async function resumePendingMppUpload(): Promise<{
+  upload_id: string
+  filename: string
+  size: number
+} | null> {
+  if (!isStreamlitComponent()) return null
+  const pending = readPending()
+  if (!pending?.b64) return null
+  return continueStreamlitUpload(pending)
+}
+
 export async function uploadMpp(file: File): Promise<{
   upload_id: string
   filename: string
   size: number
 }> {
-  // 1) HTTP API (локальный uvicorn / Windows-туннель)
+  if (file.size > MAX_MPP_BYTES) {
+    throw new Error(`Файл больше ${MAX_MPP_BYTES / (1024 * 1024)} МБ`)
+  }
+
+  // 1) HTTP API (локальный uvicorn / Windows-туннель) — с жёстким timeout
   const base = await resolveApiBase()
   if (base || !isStreamlitComponent()) {
     try {
-      const body = new FormData()
-      body.append('file', file)
-      const res = await fetch(apiPath('/api/mpp/upload', base), {
-        method: 'POST',
-        body,
-      })
-      if (res.ok) return res.json()
-      if (!isStreamlitComponent()) throw new Error(await parseError(res))
+      return await uploadMppHttp(file, base)
     } catch (e) {
       if (!isStreamlitComponent()) throw e
+      // на Streamlit падаем на chunked в session_state
     }
   }
 
-  // 2) Streamlit: кладём файл в session_state родителя
+  // 2) Streamlit: чанки base64 → session_state (не один огромный postMessage)
   if (isStreamlitComponent()) {
-    const id = crypto.randomUUID()
-    const mpp_b64 = await fileToBase64(file)
-    setComponentValue({
-      action: 'mpp_upload',
-      id,
-      filename: file.name,
-      mpp_b64,
-    })
-    await waitForMppUploadAck(id)
-    return { upload_id: id, filename: file.name, size: file.size }
+    return uploadMppViaStreamlit(file)
   }
 
   throw new Error('Не удалось загрузить .mpp')
 }
 
 export async function clearMppUpload(): Promise<void> {
+  writePending(null)
   if (!isStreamlitComponent()) return
   const id = crypto.randomUUID()
   setComponentValue({ action: 'mpp_clear', id })
+  try {
+    await waitForComponentAck(id, 15000)
+  } catch {
+    /* ignore */
+  }
 }
 
 export async function postRecalc(
@@ -159,14 +317,18 @@ export async function postRecalc(
     return args.result as RecalcResult
   }
   const base = await resolveApiBase()
-  const res = await fetch(apiPath('/api/recalc', base), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      ...form,
-      mpp_upload_id: opts?.mppUploadId || undefined,
-    }),
-  })
+  const res = await fetchWithTimeout(
+    apiPath('/api/recalc', base),
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ...form,
+        mpp_upload_id: opts?.mppUploadId || undefined,
+      }),
+    },
+    180_000,
+  )
   if (!res.ok) throw new Error(await parseError(res))
   return res.json()
 }
