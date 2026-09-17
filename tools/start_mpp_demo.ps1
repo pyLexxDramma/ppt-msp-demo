@@ -52,7 +52,7 @@ Start-Sleep -Seconds 1
 if (Test-Path $LogFile) { Remove-Item $LogFile -Force }
 
 Start-Process -FilePath $Cloudflared -ArgumentList @(
-    "tunnel", "--no-autoupdate", "--url", "http://127.0.0.1:$ApiPort"
+    "tunnel", "--no-autoupdate", "--protocol", "http2", "--url", "http://127.0.0.1:$ApiPort"
 ) -RedirectStandardError $LogFile -WindowStyle Minimized
 
 $publicUrl = $null
