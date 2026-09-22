@@ -383,14 +383,17 @@ export default function App() {
                   <p className="card-sub">из графика MPP / БД — ID подставляются автоматически</p>
                 </div>
               </div>
-              <div className="form-grid">
+              <div className="form-grid task-grid">
                 <FieldLabel
+                  htmlFor="field-task-name"
+                  className="wide"
                   editable
                   label="Наименование работ"
                   help={FIELD_HELP.task_name}
                   error={showErr('task_name')}
                 >
                   <CustomSelect
+                    id="field-task-name"
                     value={form.task_id}
                     options={taskOpts}
                     invalid={Boolean(showErr('task_name'))}
