@@ -183,13 +183,12 @@ def compute_aggregates(state: FormState) -> FormAggregates:
         last_cum = row_cum
         rows.append(WeekAgg(dev=dev, cum=row_cum))
 
-    month_plan = float(state.month_plan) if state.month_plan is not None else week_plan
-    month_fact = float(state.month_fact) if state.month_fact is not None else week_fact
-    month_deviation = None
-    if state.month_plan is not None and state.month_fact is not None:
-        month_deviation = float(state.month_plan) - float(state.month_fact)
+    month_plan = week_plan
+    month_fact = week_fact
+    has_week_fact = any(w.fact is not None for w in state.weeks[:WEEKS_COUNT])
+    month_deviation = (month_plan - month_fact) if has_week_fact else None
 
-    period_fact = float(state.month_fact) if state.month_fact is not None else week_fact
+    period_fact = week_fact
     vor = float(state.vor or 0)
     done = float(state.prev_cumulative or 0) + period_fact
     remaining = vor - done

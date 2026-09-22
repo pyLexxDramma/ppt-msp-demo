@@ -66,22 +66,7 @@ export function validateForm(form: FormState, options: FormOptions | null): Fiel
     err.prev_cumulative = 'Число ≥ 0'
   }
 
-  if (form.month_plan === null || form.month_plan === undefined || Number.isNaN(Number(form.month_plan))) {
-    err.month_plan = 'Укажите план на месяц (число ≥ 0)'
-  } else if (Number(form.month_plan) < 0) {
-    err.month_plan = 'План на месяц: число ≥ 0'
-  }
-
-  if (form.month_fact === null || form.month_fact === undefined || Number.isNaN(Number(form.month_fact))) {
-    err.month_fact = 'Укажите факт за месяц (число ≥ 0)'
-  } else if (Number(form.month_fact) < 0) {
-    err.month_fact = 'Факт за месяц: число ≥ 0'
-  }
-
   let hasPositiveFact = false
-  if (form.month_fact !== null && form.month_fact !== undefined && Number(form.month_fact) > 0) {
-    hasPositiveFact = true
-  }
   for (let i = 0; i < WEEKS_COUNT; i++) {
     const w = form.weeks[i] ?? { plan: 0, fact: null }
     const planKey = `week_plan_${i}`

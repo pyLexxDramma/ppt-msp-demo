@@ -335,6 +335,7 @@ body {
 .form-section {
   padding: 14px 16px;
   border-bottom: 1px solid var(--line);
+  overflow: visible;
 }
 
 .form-section:last-child {
@@ -414,6 +415,7 @@ body {
   flex-direction: column;
   gap: 4px;
   min-width: 120px;
+  overflow: visible;
 }
 
 .field-wrap.wide {
@@ -518,6 +520,11 @@ input.invalid,
 .cselect {
   position: relative;
   min-width: 120px;
+  z-index: 1;
+}
+
+.cselect.open {
+  z-index: 40;
 }
 
 .cselect.wide,
@@ -594,6 +601,13 @@ input.invalid,
   z-index: 30;
 }
 
+.cselect-list.is-portal {
+  position: fixed;
+  right: auto;
+  z-index: 4000;
+  max-height: none;
+}
+
 .cselect-option {
   width: 100%;
   border: 0;
@@ -605,12 +619,19 @@ input.invalid,
   font-size: 13px;
   color: var(--ink);
   cursor: pointer;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .cselect-option:hover,
 .cselect-option.selected {
   background: var(--surface-soft);
   color: var(--navy);
+}
+
+.cselect-option.is-empty {
+  color: var(--ink-faint);
+  cursor: default;
 }
 
 .form-grid .field-wrap input,
@@ -716,6 +737,17 @@ input.invalid,
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 14px 16px;
+  overflow: visible;
+}
+
+.form-grid.task-grid {
+  grid-template-columns: minmax(220px, 2fr) repeat(3, minmax(120px, 1fr));
+}
+
+@media (max-width: 720px) {
+  .form-grid.task-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .form-field {
@@ -1140,6 +1172,7 @@ input.invalid,
   margin: 0;
   padding: 0;
   min-width: 0;
+  overflow: visible;
 }
 
 .form-block.is-locked {

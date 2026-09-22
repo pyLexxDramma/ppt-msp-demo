@@ -57,13 +57,14 @@ describe('validateForm', () => {
     expect(err.weeks_fact).toBeTruthy()
   })
 
-  it('требует план и факт за месяц', () => {
+  it('не требует ручной план/факт за месяц — их считает сумма недель', () => {
     const form = sampleFormForTests()
     form.month_plan = null
     form.month_fact = null
     const err = validateForm(form, options)
-    expect(err.month_plan).toBeTruthy()
-    expect(err.month_fact).toBeTruthy()
+    expect(err.month_plan).toBeUndefined()
+    expect(err.month_fact).toBeUndefined()
+    expect(formIsValid(err)).toBe(true)
   })
 
   it('ед.изм. из справочника', () => {

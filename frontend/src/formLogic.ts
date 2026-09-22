@@ -25,29 +25,15 @@ export function computeAggregates(state: FormState): Aggregates {
     rows.push({ dev, cum: rowCum })
   }
 
-  const monthPlan =
-    state.month_plan !== null && state.month_plan !== undefined && !Number.isNaN(Number(state.month_plan))
-      ? Number(state.month_plan)
-      : weekPlanTotal
-  const monthFact =
-    state.month_fact !== null && state.month_fact !== undefined && !Number.isNaN(Number(state.month_fact))
-      ? Number(state.month_fact)
-      : weekFactTotal
-
-  const month_deviation =
-    state.month_plan === null ||
-    state.month_plan === undefined ||
-    state.month_fact === null ||
-    state.month_fact === undefined
-      ? null
-      : Number(state.month_plan) - Number(state.month_fact)
+  const monthPlan = weekPlanTotal
+  const monthFact = weekFactTotal
+  const hasWeekFact = state.weeks.some(
+    (w) => w.fact !== null && w.fact !== undefined && !Number.isNaN(Number(w.fact)),
+  )
+  const month_deviation = hasWeekFact ? monthPlan - monthFact : null
 
   const vor = Number(state.vor) || 0
-  // Накоплено с начала: приоритет у «Факт за месяц», иначе сумма фактов по неделям
-  const periodFact =
-    state.month_fact !== null && state.month_fact !== undefined && !Number.isNaN(Number(state.month_fact))
-      ? Number(state.month_fact)
-      : weekFactTotal
+  const periodFact = weekFactTotal
   const done = (Number(state.prev_cumulative) || 0) + periodFact
   const remaining = vor - done
   const pct_done = vor ? (done / vor) * 100 : 0

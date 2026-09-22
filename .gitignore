@@ -2,6 +2,9 @@
 *.mpp
 # Sample для демо (нужен для записи .mpp на Windows)
 !sample_data/msp_0feb8a44-a0f4-11ef-af7f-0050560219d5.mpp
+info/
+.DS_Store
+**/.DS_Store
 __pycache__/
 *.pyc
 .venv/

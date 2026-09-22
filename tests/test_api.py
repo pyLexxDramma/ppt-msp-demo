@@ -103,6 +103,37 @@ def test_download_mpp_when_available() -> None:
         assert r.status_code == 404
 
 
+def test_mpp_upload_without_com_uses_windows_catalog(monkeypatch) -> None:
+    from demo.catalog import empty_form_options
+
+    opts = empty_form_options()
+    opts["source"] = "mpp"
+    opts["projects"] = [{"id": "mpp", "name": "ЖК Тест"}]
+    opts["tasks"] = [
+        {
+            "id": "6",
+            "name": "Фундаменты сборные",
+            "unit": "шт",
+            "vor": 350,
+            "vor_fact": 205,
+            "project_id": "mpp",
+        }
+    ]
+    monkeypatch.setattr("api.main.project_available", lambda: False)
+    monkeypatch.setattr(
+        "demo.windows_host.remote_upload_mpp",
+        lambda *a, **k: {"upload_id": "remote-1", "options": opts, "warning": None},
+    )
+    up = client.post(
+        "/api/mpp/upload",
+        files={"file": ("source.mpp", b"PK-fake-mpp", "application/octet-stream")},
+    )
+    assert up.status_code == 200
+    body = up.json()
+    assert body["options"]["tasks"][0]["name"] == "Фундаменты сборные"
+    assert body["options"]["tasks"][0]["id"] == "6"
+
+
 def test_mpp_upload_and_recalc_accepts_upload_id() -> None:
     sample = Path(__file__).resolve().parent.parent / "sample_data" / "msp_0feb8a44-a0f4-11ef-af7f-0050560219d5.mpp"
     if not sample.is_file():

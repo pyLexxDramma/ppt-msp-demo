@@ -18,7 +18,12 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from demo.form_input import MONTHS_RU, FormState, form_ready_for_recalc  # noqa: E402
-from demo.catalog import empty_form_options, load_form_options, options_from_mpp_rows  # noqa: E402
+from demo.catalog import (  # noqa: E402
+    catalog_has_tasks,
+    empty_form_options,
+    load_form_options,
+    options_from_mpp_rows,
+)
 from demo.mpp_writer import dump_mpp_rows, project_available  # noqa: E402
 from demo.payloads import agg_dict, build_recalc, prefill_payload  # noqa: E402
 
@@ -101,9 +106,36 @@ def _prune_uploads(keep: int = 10) -> None:
         _UPLOAD_META.pop(key, None)
 
 
+def _inspect_via_windows_api(data: bytes, filename: str) -> dict[str, Any] | None:
+    """На Mac/CI без COM — взять справочник с Windows-хоста (тот же /api/mpp/upload)."""
+    from demo.windows_host import remote_upload_mpp
+
+    remote = remote_upload_mpp(data, filename=filename)
+    if not remote:
+        return None
+    options = remote.get("options") if isinstance(remote.get("options"), dict) else None
+    if not catalog_has_tasks(options):
+        return {
+            "options": empty_form_options(),
+            "com_available": False,
+            "warning": remote.get("warning")
+            or "Windows API не вернул leaf-задачи с ВОР (Text13) из .mpp.",
+        }
+    return {
+        "options": options,
+        "rows": remote.get("rows") or [],
+        "com_available": False,
+        "remote_upload_id": remote.get("upload_id"),
+        "warning": remote.get("warning"),
+    }
+
+
 def _inspect_uploaded_mpp(data: bytes, filename: str) -> dict[str, Any]:
-    """Прочитать справочник из .mpp (COM). Без COM — пустые options."""
+    """Прочитать справочник из .mpp: COM локально, иначе Windows API."""
     if not project_available():
+        proxied = _inspect_via_windows_api(data, filename)
+        if proxied:
+            return proxied
         return {
             "options": empty_form_options(),
             "com_available": False,
@@ -116,9 +148,13 @@ def _inspect_uploaded_mpp(data: bytes, filename: str) -> dict[str, Any]:
             "options": options,
             "rows": rows,
             "com_available": True,
-            "warning": None if options.get("tasks") else "В .mpp не найдены leaf-задачи с ВОР (Text13).",
+            "warning": None if catalog_has_tasks(options) else "В .mpp не найдены leaf-задачи с ВОР (Text13).",
         }
     except Exception as e:
+        proxied = _inspect_via_windows_api(data, filename)
+        if proxied and catalog_has_tasks(proxied.get("options")):
+            proxied["warning"] = proxied.get("warning") or f"Локальный COM не прочитал файл, взяли Windows API. {e}"
+            return proxied
         return {
             "options": empty_form_options(),
             "com_available": True,

@@ -7,6 +7,7 @@ import { MppUploadCard } from './components/MppUploadCard'
 import { ReadonlyValue } from './components/ReadonlyValue'
 import { ScheduleTable } from './components/ScheduleTable'
 import { computeAggregates, fmt, periodLabel, signedFmt } from './formLogic'
+import { catalogHasTasks } from './mppCatalog'
 import { FIELD_HELP, type FormOptions } from './options'
 import { isStreamlitComponent, subscribeArgs, syncHeight } from './streamlitBridge'
 import { MONTHS_RU, WEEKS_COUNT, defaultForm, type FormState, type RecalcResult } from './types'
@@ -65,10 +66,10 @@ export default function App() {
           options?: FormOptions
         }
       } | undefined)?.mpp_upload
-      if (!upload?.ready) return
+      if (!upload?.ready || !catalogHasTasks(upload.options)) return
       setMppFilename(upload.filename ?? 'source.mpp')
       setMppUploadId((prev) => upload.upload_id || prev || 'session')
-      if (upload.options) setOptions(upload.options)
+      setOptions(upload.options ?? null)
     })
   }, [])
 
@@ -88,10 +89,13 @@ export default function App() {
         setForm(defaultForm())
         if (data.months?.length) setMonths(data.months)
         if (data.options) setOptions(data.options)
-        if (data.mpp_upload?.ready) {
+        if (data.mpp_upload?.ready && catalogHasTasks(data.mpp_upload.options)) {
           setMppFilename(data.mpp_upload.filename ?? 'source.mpp')
           setMppUploadId(data.mpp_upload.upload_id || 'session')
-          if (data.mpp_upload.options) setOptions(data.mpp_upload.options)
+          setOptions(data.mpp_upload.options ?? data.options)
+        } else if (data.mpp_upload?.filename && data.mpp_upload.warning) {
+          setMppFilename(data.mpp_upload.filename)
+          showToast(data.mpp_upload.warning, 'warn')
         }
       } catch (e) {
         if (!cancelled) {
@@ -172,7 +176,10 @@ export default function App() {
     }
     setBusy(true)
     try {
-      const data = await postRecalc(form, { mppUploadId })
+      const data = await postRecalc(
+        { ...form, month_plan: agg.plan_total, month_fact: agg.fact_total },
+        { mppUploadId },
+      )
       setResult(data)
       if (data.downloads.mpp) {
         showToast('Пересчёт завершён. Можно скачать .mpp', 'ok')
@@ -269,7 +276,7 @@ export default function App() {
             busy={busy}
             uploadFn={uploadMpp}
             onUploaded={({ uploadId, filename, options, warning }) => {
-              if (!options?.tasks?.length) {
+              if (!catalogHasTasks(options)) {
                 showToast(
                   warning ||
                     'Загрузка отклонена: из .mpp не прочитаны задачи (нужен Windows API).',
@@ -290,6 +297,7 @@ export default function App() {
               void clearMppUpload()
               setMppUploadId(null)
               setMppFilename(null)
+              setOptions(null)
               setForm(defaultForm())
               setTouched(false)
               setResult(null)
@@ -383,14 +391,17 @@ export default function App() {
                   <p className="card-sub">из графика MPP / БД — ID подставляются автоматически</p>
                 </div>
               </div>
-              <div className="form-grid">
+              <div className="form-grid task-grid">
                 <FieldLabel
+                  htmlFor="field-task-name"
+                  className="wide"
                   editable
                   label="Наименование работ"
                   help={FIELD_HELP.task_name}
                   error={showErr('task_name')}
                 >
                   <CustomSelect
+                    id="field-task-name"
                     value={form.task_id}
                     options={taskOpts}
                     invalid={Boolean(showErr('task_name'))}
@@ -418,43 +429,22 @@ export default function App() {
                 <div>
                   <p className="card-title">Объёмы за месяц</p>
                   <p className="card-sub">
-                    План и факт за отчётный месяц — отклонение считается как план − факт
+                    Сумма плана и факта по неделям — отклонение: план − факт
                   </p>
                 </div>
                 <span className="period-pill">{periodLabel(form, months)}</span>
               </div>
               <div className="form-grid month-volume-grid">
-                <FieldLabel
-                  editable
-                  label="План на месяц"
-                  help={FIELD_HELP.month_plan}
-                  error={showErr('month_plan')}
-                >
-                  <input
-                    type="number"
-                    className={showErr('month_plan') ? 'invalid' : undefined}
-                    value={form.month_plan ?? ''}
-                    onChange={(e) => {
-                      const v = e.target.value
-                      patch('month_plan', v === '' ? null : Number(v))
-                    }}
-                    aria-label="План на месяц"
-                  />
+                <FieldLabel label="План на месяц" help={FIELD_HELP.month_plan}>
+                  <ReadonlyValue value={fmt(agg.plan_total)} aria-label="План на месяц" />
                 </FieldLabel>
-                <FieldLabel
-                  editable
-                  label="Факт за месяц"
-                  help={FIELD_HELP.month_fact}
-                  error={showErr('month_fact')}
-                >
-                  <input
-                    type="number"
-                    className={showErr('month_fact') ? 'invalid' : undefined}
-                    value={form.month_fact ?? ''}
-                    onChange={(e) => {
-                      const v = e.target.value
-                      patch('month_fact', v === '' ? null : Number(v))
-                    }}
+                <FieldLabel label="Факт за месяц" help={FIELD_HELP.month_fact}>
+                  <ReadonlyValue
+                    value={
+                      form.weeks.some((w) => w.fact !== null && w.fact !== undefined)
+                        ? fmt(agg.fact_total)
+                        : null
+                    }
                     aria-label="Факт за месяц"
                   />
                 </FieldLabel>

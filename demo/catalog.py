@@ -10,6 +10,14 @@ from .mpp_writer import dump_mpp_rows, project_available
 FALLBACK_UNITS = ["шт", "м3", "м2", "м", "т", "компл.", "п.м"]
 
 
+def catalog_has_tasks(options: dict[str, Any] | None) -> bool:
+    """Есть ли в справочнике хотя бы одна leaf-задача — иначе форму не открываем."""
+    if not options:
+        return False
+    tasks = options.get("tasks")
+    return isinstance(tasks, list) and len(tasks) > 0
+
+
 def empty_form_options() -> dict[str, Any]:
     """Пустые справочники до загрузки .mpp."""
     year_now = 2026
