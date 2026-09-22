@@ -22,12 +22,23 @@ describe('formLogic cumulative deviation', () => {
     expect(agg.month_cum).toBe(-10 + -20 + -5)
   })
 
-  it('отклонение за месяц = план − факт', () => {
+  it('объёмы за месяц = сумма плана и факта по неделям', () => {
     const form = sampleFormForTests()
-    form.month_plan = 100
-    form.month_fact = 55
+    form.month_plan = 999
+    form.month_fact = 1
+    form.weeks = weeks(10, null, 0, 15, null)
     const agg = computeAggregates(form)
-    expect(agg.month_deviation).toBe(45)
+    expect(agg.plan_total).toBe(100)
+    expect(agg.fact_total).toBe(25)
+    expect(agg.month_deviation).toBe(75)
+  })
+
+  it('без недельного факта отклонение за месяц пустое', () => {
+    const form = sampleFormForTests()
+    form.weeks = weeks(null, null, null, null, null)
+    const agg = computeAggregates(form)
+    expect(agg.fact_total).toBe(0)
+    expect(agg.month_deviation).toBeNull()
   })
 
   it('отличает пустой факт от нуля в готовности', () => {

@@ -18,13 +18,23 @@ from demo.form_input import (
 def test_aggregates_mockup_default() -> None:
     state = sample_form_for_tests()
     agg = compute_aggregates(state)
-    # month_plan=100, month_fact=55; prev 0 → done 55; vor 350 → rest 295
+    # недели: план 20×5=100, факт 10+30+0+15=55; prev 0 → done 55; vor 350 → rest 295
     assert agg.fact_total == 55
     assert agg.done == 55
     assert agg.remaining == 295
     assert agg.plan_total == 100
     assert agg.month_deviation == 45  # 100 - 55
     assert form_ready_for_recalc(state) is True
+
+
+def test_month_volumes_from_weeks_ignore_manual_month_fields() -> None:
+    state = sample_form_for_tests()
+    state.month_plan = 999
+    state.month_fact = 1
+    agg = compute_aggregates(state)
+    assert agg.plan_total == 100
+    assert agg.fact_total == 55
+    assert agg.month_deviation == 45
 
 
 def test_empty_form_not_ready() -> None:

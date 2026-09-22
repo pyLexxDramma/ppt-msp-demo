@@ -2,7 +2,14 @@
 
 from __future__ import annotations
 
-from demo.catalog import empty_form_options, options_from_mpp_rows
+from demo.catalog import catalog_has_tasks, empty_form_options, options_from_mpp_rows
+
+
+def test_catalog_has_tasks() -> None:
+    assert catalog_has_tasks(None) is False
+    assert catalog_has_tasks(empty_form_options()) is False
+    assert catalog_has_tasks({"tasks": []}) is False
+    assert catalog_has_tasks({"tasks": [{"id": "6", "name": "Фундаменты сборные"}]}) is True
 
 
 def test_empty_form_options() -> None:

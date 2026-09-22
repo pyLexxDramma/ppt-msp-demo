@@ -112,14 +112,16 @@ def render() -> None:
     )
 
     prefill = {**_prefill()}
+    from demo.catalog import catalog_has_tasks
+
     mpp_opts = st.session_state.get("ppt_mpp_options")
-    if isinstance(mpp_opts, dict) and mpp_opts:
+    if isinstance(mpp_opts, dict) and catalog_has_tasks(mpp_opts):
         prefill["options"] = mpp_opts
     prefill["mpp_upload"] = {
-        "ready": "ppt_source_mpp" in st.session_state,
+        "ready": catalog_has_tasks(mpp_opts if isinstance(mpp_opts, dict) else None),
         "filename": st.session_state.get("ppt_source_mpp_name"),
         "upload_id": st.session_state.get("ppt_mpp_upload_id"),
-        "options": mpp_opts,
+        "options": mpp_opts if catalog_has_tasks(mpp_opts if isinstance(mpp_opts, dict) else None) else None,
         "warning": st.session_state.get("ppt_mpp_warning"),
     }
     result = st.session_state.get("ppt_react_result")

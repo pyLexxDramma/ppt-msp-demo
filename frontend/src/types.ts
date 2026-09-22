@@ -31,9 +31,9 @@ export type FormState = {
   vor: number
   unit: string
   prev_cumulative: number
-  /** Плановый объём на отчётный месяц (ввод). */
+  /** Плановый объём на месяц — сумма планов по неделям (для API). */
   month_plan: number | null
-  /** Фактический объём за отчётный месяц (ввод). */
+  /** Фактический объём за месяц — сумма фактов по неделям (для API). */
   month_fact: number | null
   weeks: WeekRow[]
 }
